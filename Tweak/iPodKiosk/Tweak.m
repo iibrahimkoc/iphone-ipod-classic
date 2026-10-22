@@ -47,9 +47,20 @@ static void launchAppSoon(NSTimeInterval delay) {
     });
 }
 
+// Makes the lock screen (cover sheet) and the wallpaper invisible, so waking shows black and then
+// the app; the lock screen is still there and dismissed right away. Restored while escaped so the
+// normal lock and home screens work.
+static void setCoverSheetHidden(BOOL hidden) {
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        NSString *name = NSStringFromClass(window.class);
+        if ([name containsString:@"CoverSheet"] || [name containsString:@"Wallpaper"]) window.alpha = hidden ? 0 : 1;
+    }
+}
+
 static void setEscaped(BOOL value) {
     if (escaped == value) return;
     escaped = value;
+    setCoverSheetHidden(!value);
     AudioServicesPlaySystemSound(kSystemSoundID_Vibrate);
     // Gesture enablement is cached; ask SpringBoard to re-evaluate it.
     if ([gestureManager respondsToSelector:NSSelectorFromString(@"_evaluateEnablement")]) {
@@ -161,7 +172,11 @@ __attribute__((constructor)) static void init(void) {
     notify_register_dispatch("com.apple.springboard.hasBlankedScreen", &token, dispatch_get_main_queue(), ^(int t) {
         uint64_t blanked = 0;
         notify_get_state(t, &blanked);
-        if (blanked || escaped || !isLocked()) return;
+        if (blanked) {
+            if (!escaped) setCoverSheetHidden(YES);
+            return;
+        }
+        if (escaped || !isLocked()) return;
         // A direct unlock request is ignored here, so act as if the home button had been pressed,
         // which is what the lock screen asks for ("press home to open").
         dispatch_async(dispatch_get_main_queue(), ^{
