@@ -201,8 +201,9 @@ struct TitleBar: View {
         GeometryReader { geo in
             HStack {
                 HStack(spacing: 4) {
+                    // Like Mac Kumandası: pause while playing, play while paused.
                     if hasItem {
-                        Image(systemName: isPlaying ? "play.fill" : "pause.fill")
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     }
                     Image(systemName: output.symbol)
                         .font(.system(size: geo.size.height * 0.42))
