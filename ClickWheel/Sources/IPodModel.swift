@@ -14,11 +14,13 @@ enum MenuAction {
 
 /// Lists rebuilt from live system state on every render.
 enum LiveList {
+    case settings
     case bluetooth
     case wifi
 
     var title: String {
         switch self {
+        case .settings: return "Ayarlar"
         case .bluetooth: return "Bluetooth"
         case .wifi: return "Wi-Fi"
         }
@@ -87,6 +89,7 @@ final class IPodModel: ObservableObject {
     let volume = VolumeController()
     let bluetooth = BluetoothController()
     let wifi = WiFiController()
+    let airplane = AirplaneController()
     private(set) lazy var route = AudioRouteController(player: player)
     private var hideHUD: DispatchWorkItem?
 
@@ -112,7 +115,12 @@ final class IPodModel: ObservableObject {
         case .list(let list):
             return list
         case .live(let kind, let selection, let top):
-            let items = kind == .bluetooth ? bluetoothItems() : wifiItems()
+            let items: [MenuItem]
+            switch kind {
+            case .settings: items = settingsItems()
+            case .bluetooth: items = bluetoothItems()
+            case .wifi: items = wifiItems()
+            }
             let clamped = min(selection, max(items.count - 1, 0))
             return ListScreen(title: kind.title, items: items, selection: clamped, top: min(top, clamped))
         default:
@@ -200,6 +208,7 @@ final class IPodModel: ObservableObject {
         case .live(let kind):
             stack.append(.live(kind, selection: 0, top: 0))
             switch kind {
+            case .settings: airplane.refresh()
             case .bluetooth: bluetooth.startScanning()
             case .wifi: wifi.startScanning()
             }
@@ -213,6 +222,7 @@ final class IPodModel: ObservableObject {
         guard stack.count > 1 else { return }
         if case .live(let kind, _, _) = stack.removeLast() {
             switch kind {
+            case .settings: break
             case .bluetooth: bluetooth.stopScanning()
             case .wifi: wifi.stopScanning()
             }
@@ -247,14 +257,22 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Müzik", action: .push("Müzik") { [unowned self] in self.musicMenu() }),
             MenuItem(title: "Şarkıları Karıştır", action: .shuffleAll),
             MenuItem(title: "Şimdi Çalıyor", action: .nowPlaying),
-            MenuItem(title: "Ayarlar", action: .push("Ayarlar") {
-                [
-                    MenuItem(title: "Wi-Fi", action: .live(.wifi)),
-                    MenuItem(title: "Bluetooth", action: .live(.bluetooth)),
-                    MenuItem(title: "Tık Sesi", action: .clickVolume),
-                ]
-            }),
+            MenuItem(title: "Ayarlar", action: .live(.settings)),
         ])
+    }
+
+    private func settingsItems() -> [MenuItem] {
+        var items: [MenuItem] = []
+        if airplane.available {
+            // Airplane mode also switches off Wi-Fi and Bluetooth; iOS remembers if they are turned back on.
+            items.append(MenuItem(title: "Uçak Modu", action: .run { [unowned self] in
+                self.airplane.setEnabled(!self.airplane.enabled)
+            }, detail: airplane.enabled ? "Açık" : "Kapalı"))
+        }
+        items.append(MenuItem(title: "Wi-Fi", action: .live(.wifi), detail: wifi.powered ? wifi.current ?? "Açık" : "Kapalı"))
+        items.append(MenuItem(title: "Bluetooth", action: .live(.bluetooth), detail: bluetooth.powered ? "Açık" : "Kapalı"))
+        items.append(MenuItem(title: "Tık Sesi", action: .clickVolume))
+        return items
     }
 
     private func wifiItems() -> [MenuItem] {

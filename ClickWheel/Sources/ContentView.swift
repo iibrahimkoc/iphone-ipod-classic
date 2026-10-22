@@ -12,7 +12,7 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 ScreenView(model: model, player: model.player, volume: model.volume,
-                           bluetooth: model.bluetooth, wifi: model.wifi, route: model.route)
+                           bluetooth: model.bluetooth, wifi: model.wifi, route: model.route, airplane: model.airplane)
                     .frame(width: screenWidth, height: screenHeight)
                     .padding(.top, 24)
                 Spacer(minLength: 0)
@@ -57,6 +57,7 @@ struct ScreenView: View {
     @ObservedObject var bluetooth: BluetoothController
     @ObservedObject var wifi: WiFiController
     @ObservedObject var route: AudioRouteController
+    @ObservedObject var airplane: AirplaneController
 
     @State private var swipeAxis: Axis?
     @State private var lastTranslation = CGSize.zero

@@ -12,6 +12,10 @@
 	<true/>
 	<key>com.apple.wifi.manager-access</key>
 	<true/>
+	<key>com.apple.SystemConfiguration.SCPreferences-write-access</key>
+	<array>
+		<string>com.apple.radios.plist</string>
+	</array>
 	<key>com.apple.private.tcc.allow</key>
 	<array>
 		<string>kTCCServiceBluetoothAlways</string>
