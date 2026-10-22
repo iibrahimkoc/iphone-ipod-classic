@@ -28,6 +28,35 @@ struct Track: Identifiable {
     }
 }
 
+/// A game file waiting to go to one of the iPod's Oyunlar folders.
+struct GameItem: Identifiable {
+    enum State {
+        case ready, sending, sent
+        case failed(String)
+    }
+
+    let id = UUID()
+    let file: URL
+    /// The folder on the phone, e.g. /var/mobile/Media/iPodOyun/NES.
+    let folder: String
+    var state = State.ready
+
+    var console: String {
+        switch (folder as NSString).lastPathComponent {
+        case "MegaDrive": return "Mega Drive"
+        case let name: return name
+        }
+    }
+
+    /// Still to be sent (again, if it failed).
+    var pending: Bool {
+        switch state {
+        case .ready, .failed: return true
+        case .sending, .sent: return false
+        }
+    }
+}
+
 struct ContentView: View {
     let openLibrary: () -> Void
     @EnvironmentObject private var phone: Phone
@@ -39,13 +68,15 @@ struct ContentView: View {
     @State private var singleAlbum = false
     @State private var albumName = "Piyano"
     @State private var address = ""
-    /// What happened to the games dropped in, which go straight to the iPod's game folders.
-    @State private var gameStatus: String?
+    @State private var games: [GameItem] = []
 
     private var readyCount: Int { tracks.filter { $0.info != nil || $0.retryInfo != nil }.count }
+    private var pendingGames: Int { games.filter(\.pending).count }
+    private var songsPending: Bool { tracks.contains { $0.info != nil || $0.retryInfo != nil } || searching }
     private var searching: Bool { tracks.contains { if case .searching = $0.state { return true }; return false } }
     private var allDone: Bool {
-        !tracks.isEmpty && tracks.allSatisfy {
+        (!tracks.isEmpty || !games.isEmpty) && games.allSatisfy { if case .sent = $0.state { return true }; return false }
+            && tracks.allSatisfy {
             switch $0.state {
             case .failed(_, let retry): return retry == nil
             case .added, .sent, .duplicate: return true
@@ -56,19 +87,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let status = gameStatus {
-                HStack {
-                    Image(systemName: "gamecontroller")
-                    Text(status).lineLimit(2)
-                    Spacer()
-                    Button { gameStatus = nil } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.borderless)
-                }
-                .font(.callout)
-                .padding(10)
-                .background(Color.accentColor.opacity(0.12))
-            }
-            if tracks.isEmpty {
+            if tracks.isEmpty && games.isEmpty {
                 emptyState
             } else {
                 list
@@ -80,7 +99,7 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.accentColor, lineWidth: 3)
                 .padding(4)
-                .opacity(dropTargeted && !tracks.isEmpty ? 1 : 0)
+                .opacity(dropTargeted && !(tracks.isEmpty && games.isEmpty) ? 1 : 0)
         )
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             for provider in providers {
@@ -103,7 +122,7 @@ struct ContentView: View {
                 .font(.title2.weight(.semibold))
             Text("Şarkı adı, sanatçı, albüm ve kapak otomatik bulunur.")
                 .foregroundStyle(.secondary)
-            Text("Oyunlar da olur: .nes, .md, .wad dosyaları doğrudan iPod'un Oyunlar klasörüne gider.")
+            Text("Oyunlar da olur: .nes, .md, .wad dosyaları iPod'un Oyunlar bölümüne gider.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -126,7 +145,10 @@ struct ContentView: View {
             ForEach(tracks) { track in
                 TrackRow(track: track) { tracks.removeAll { $0.id == track.id } }
             }
-            Text(allDone ? "Yeni şarkı eklemek için tekrar sürükleyebilirsin." : "Daha fazla şarkı sürükleyebilirsin.")
+            ForEach(games) { game in
+                GameRow(game: game) { games.removeAll { $0.id == game.id } }
+            }
+            Text(allDone ? "Yeni şarkı ya da oyun eklemek için tekrar sürükleyebilirsin." : "Daha fazla şarkı ya da oyun sürükleyebilirsin.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
@@ -136,7 +158,7 @@ struct ContentView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !allDone {
+            if !allDone && songsPending {
                 HStack {
                     Toggle("Tek albüm yap:", isOn: $singleAlbum)
                     TextField("Albüm adı", text: $albumName)
@@ -156,7 +178,10 @@ struct ContentView: View {
             phoneStatus
             Spacer()
             if allDone {
-                Button("Temizle") { tracks.removeAll() }
+                Button("Temizle") {
+                    tracks.removeAll()
+                    games.removeAll()
+                }
             } else {
                 if uploading || searching { ProgressView().controlSize(.small) }
                 Menu("Mac'e Ekle") {
@@ -164,9 +189,9 @@ struct ContentView: View {
                 }
                 .fixedSize()
                 .disabled(readyCount == 0 || uploading)
-                Button(uploading ? "Gönderiliyor…" : "iPod'a Gönder (\(readyCount))", action: sendToPhone)
+                Button(uploading ? "Gönderiliyor…" : "iPod'a Gönder (\(readyCount + pendingGames))", action: sendToPhone)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(readyCount == 0 || uploading || !phone.found)
+                    .disabled(readyCount + pendingGames == 0 || uploading || !phone.found)
             }
         }
     }
@@ -225,7 +250,8 @@ struct ContentView: View {
 
     private func add(_ url: URL) {
         if let folder = Phone.gameFolder(for: url) {
-            return sendGame(url, to: folder)
+            if !games.contains(where: { $0.file == url }) { games.append(GameItem(file: url, folder: folder)) }
+            return
         }
         if url.hasDirectoryPath {
             let files = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
@@ -244,23 +270,6 @@ struct ContentView: View {
                 state = .failed("Aranamadı")
             }
             update(track.id, state)
-        }
-    }
-
-    private func sendGame(_ file: URL, to folder: String) {
-        let name = file.lastPathComponent
-        guard phone.found else {
-            gameStatus = "\(name) gönderilemedi: iPod bulunamadı."
-            return
-        }
-        gameStatus = "\(name) gönderiliyor…"
-        Task {
-            do {
-                try await phone.send(file, as: name, to: folder)
-                gameStatus = "\(name) iPod'a gönderildi: Oyunlar › \((folder as NSString).lastPathComponent)"
-            } catch {
-                gameStatus = "\(name) gönderilemedi (iPod açık ve aynı Wi-Fi'de mi?)"
-            }
         }
     }
 
@@ -285,14 +294,26 @@ struct ContentView: View {
         }
     }
 
-    /// Tags the files, then copies them straight into the iPod's music folder over Wi-Fi.
+    /// Tags the files, then copies them straight into the iPod's music folder over Wi-Fi; games go
+    /// into their console's folder as they are.
     private func sendToPhone() {
         let items = itemsToTag()
-        guard !items.isEmpty else { return }
+        let gameIDs = games.filter(\.pending).map(\.id)
+        guard !items.isEmpty || !gameIDs.isEmpty else { return }
         uploading = true
         items.forEach { update($0.0, .adding) }
         Task {
-            let tagged = (try? await Tagger.tagOnly(items.map { ($0.1, $0.2) })) ?? []
+            for id in gameIDs {
+                guard let game = games.first(where: { $0.id == id }) else { continue }
+                setGame(id, .sending)
+                do {
+                    try await phone.send(game.file, as: game.file.lastPathComponent, to: game.folder)
+                    setGame(id, .sent)
+                } catch {
+                    setGame(id, .failed("Gönderilemedi (iPod açık ve aynı Wi-Fi'de mi?)"))
+                }
+            }
+            let tagged = items.isEmpty ? [] : (try? await Tagger.tagOnly(items.map { ($0.1, $0.2) })) ?? []
             for (id, file, info) in items {
                 guard tagged.first(where: { $0.path == file.path })?.ok == true else {
                     update(id, .failed("Etiketlenemedi", retry: info))
@@ -309,6 +330,10 @@ struct ContentView: View {
         }
     }
 
+    private func setGame(_ id: UUID, _ state: GameItem.State) {
+        if let index = games.firstIndex(where: { $0.id == id }) { games[index].state = state }
+    }
+
     /// "Sertab Erener - Yanarım.mp3", with characters that can't be in a file name removed.
     private func fileName(_ info: Tagger.Info, ext: String) -> String {
         let base = "\(info.artistName) - \(info.trackName)"
@@ -318,6 +343,54 @@ struct ContentView: View {
 
     private func update(_ id: UUID, _ state: Track.State) {
         if let index = tracks.firstIndex(where: { $0.id == id }) { tracks[index].state = state }
+    }
+}
+
+private struct GameRow: View {
+    let game: GameItem
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Color.secondary.opacity(0.2)
+                Image(systemName: "gamecontroller").foregroundStyle(.secondary)
+            }
+            .frame(width: 44, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(game.file.deletingPathExtension().lastPathComponent)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            switch game.state {
+            case .sending:
+                ProgressView().controlSize(.small)
+            case .sent:
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            case .ready:
+                Button(action: remove) { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+                    .help("Listeden çıkar")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var subtitle: String {
+        switch game.state {
+        case .ready: return "Oyun · Oyunlar › \(game.console)"
+        case .sending: return "Gönderiliyor…"
+        case .sent: return "iPod'a gönderildi · Oyunlar › \(game.console)"
+        case .failed(let message): return message + " · tekrar denemek için iPod'a Gönder"
+        }
     }
 }
 
