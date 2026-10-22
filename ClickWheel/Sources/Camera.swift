@@ -172,17 +172,32 @@ final class PhotoLibrary: ObservableObject {
             DispatchQueue.main.async {
                 self.denied = !allowed
                 self.assets = assets
+                self.shown = nil
             }
         }
     }
 
-    func image(at index: Int, size: CGSize, done: @escaping (UIImage?) -> Void) {
-        guard assets.indices.contains(index) else { return done(nil) }
+    /// The photo on screen. Only the newest request counts: an older one still loading is
+    /// cancelled, and anything it delivers late is ignored, so fast scrolling can't show the wrong photo.
+    @Published private(set) var image: UIImage?
+    private var shown: Int?
+    private var request: PHImageRequestID?
+
+    func show(_ index: Int, size: CGSize) {
+        guard index != shown || image == nil else { return }
+        shown = index
+        image = nil
+        if let request = request { manager.cancelImageRequest(request) }
+        guard assets.indices.contains(index) else { return }
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.isNetworkAccessAllowed = false
-        manager.requestImage(for: assets[index], targetSize: size, contentMode: .aspectFit, options: options) { image, _ in
-            done(image)
+        request = manager.requestImage(for: assets[index], targetSize: size, contentMode: .aspectFit, options: options) {
+            [weak self] image, _ in
+            DispatchQueue.main.async {
+                guard let self = self, self.shown == index else { return }
+                self.image = image
+            }
         }
     }
 }
@@ -250,7 +265,6 @@ private struct CameraPreview: UIViewRepresentable {
 struct PhotoView: View {
     @ObservedObject var photos: PhotoLibrary
     let index: Int
-    @State private var image: UIImage?
 
     var body: some View {
         GeometryReader { geo in
@@ -262,7 +276,7 @@ struct PhotoView: View {
                         .font(.system(size: h * 0.08))
                         .foregroundColor(.gray)
                 } else {
-                    if let image = image {
+                    if let image = photos.image {
                         Image(uiImage: image).resizable().scaledToFit()
                     }
                     VStack {
@@ -284,12 +298,7 @@ struct PhotoView: View {
     }
 
     private func load(size: CGSize) {
-        let wanted = index
         let scale = UIScreen.main.scale
-        photos.image(at: wanted, size: CGSize(width: size.width * scale, height: size.height * scale)) { image in
-            // A slow request for a photo already scrolled past mustn't replace the current one.
-            guard wanted == index else { return }
-            self.image = image
-        }
+        photos.show(index, size: CGSize(width: size.width * scale, height: size.height * scale))
     }
 }
