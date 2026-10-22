@@ -183,8 +183,9 @@ struct TitleBar: View {
         GeometryReader { geo in
             HStack {
                 HStack(spacing: 4) {
-                    Image(systemName: isPlaying ? "play.fill" : "pause.fill")
-                        .opacity(hasItem ? 1 : 0)
+                    if hasItem {
+                        Image(systemName: isPlaying ? "play.fill" : "pause.fill")
+                    }
                     Image(systemName: output.symbol)
                         .font(.system(size: geo.size.height * 0.42))
                     // Only a low headphone battery is worth the space; the Pil screen has the details.
