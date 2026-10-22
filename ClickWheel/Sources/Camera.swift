@@ -183,6 +183,8 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
 /// The Camera Roll, newest first, for "Fotoğraflar".
 final class PhotoLibrary: ObservableObject {
     @Published private(set) var assets: [PHAsset] = []
+    /// Fotoğraflar › Favoriler: only the photos marked as favorite.
+    var favoritesOnly = false
     @Published private(set) var denied = false
     private let manager = PHCachingImageManager()
 
@@ -192,9 +194,8 @@ final class PhotoLibrary: ObservableObject {
             let allowed = status == .authorized || status == .limited
             var assets: [PHAsset] = []
             if allowed {
-                let options = PHFetchOptions()
-                options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-                PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in assets.append(asset) }
+                PHAsset.fetchAssets(with: .image, options: Self.options(favorites: self.favoritesOnly))
+                    .enumerateObjects { asset, _, _ in assets.append(asset) }
             }
             DispatchQueue.main.async {
                 self.denied = !allowed
@@ -206,13 +207,27 @@ final class PhotoLibrary: ObservableObject {
         }
     }
 
+    /// Newest first, optionally only favorites.
+    private static func options(favorites: Bool) -> PHFetchOptions {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        if favorites { options.predicate = NSPredicate(format: "favorite == YES") }
+        return options
+    }
+
+    /// The number of photos for the Fotoğraflar menu, or nil before access is granted.
+    static func count(favorites: Bool) -> Int? {
+        guard [.authorized, .limited].contains(PHPhotoLibrary.authorizationStatus(for: .readWrite)) else { return nil }
+        return PHAsset.fetchAssets(with: .image, options: options(favorites: favorites)).count
+    }
+
     // MARK: Actions (held center button)
 
-    func toggleFavorite(_ index: Int) {
+    func toggleFavorite(_ index: Int, done: @escaping () -> Void) {
         guard assets.indices.contains(index) else { return }
         let asset = assets[index], favorite = !asset.isFavorite
         PHPhotoLibrary.shared().performChanges({ PHAssetChangeRequest(for: asset).isFavorite = favorite }) { saved, _ in
-            if saved { self.load() }
+            if saved { DispatchQueue.main.async { self.load(done: done) } }
         }
     }
 
@@ -327,7 +342,7 @@ struct PhotoView: View {
             ZStack {
                 Color.black
                 if photos.assets.isEmpty {
-                    Text(photos.denied ? "Fotoğraflar izni yok" : "Fotoğraf yok")
+                    Text(photos.denied ? "Fotoğraflar izni yok" : photos.favoritesOnly ? "Favori fotoğraf yok" : "Fotoğraf yok")
                         .font(.system(size: h * 0.08))
                         .foregroundColor(.gray)
                 } else {

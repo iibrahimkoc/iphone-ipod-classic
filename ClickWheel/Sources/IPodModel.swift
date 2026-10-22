@@ -11,7 +11,8 @@ enum MenuAction {
     case clickVolume
     case coverFlow
     case camera
-    case photos
+    /// All photos, or only the favorites.
+    case photos(favorites: Bool)
     case live(LiveList)
     case run(() -> Void)
 }
@@ -209,7 +210,7 @@ final class IPodModel: ObservableObject {
         case .chess: return "Satranç"
         case .game: return emulator?.title ?? "Oyun"
         case .camera: return "Kamera"
-        case .photos: return "Fotoğraflar"
+        case .photos: return photos.favoritesOnly ? "Favoriler" : "Fotoğraflar"
         }
     }
 
@@ -388,7 +389,8 @@ final class IPodModel: ObservableObject {
         case .camera:
             camera.start()
             stack.append(.camera)
-        case .photos:
+        case .photos(let favorites):
+            photos.favoritesOnly = favorites
             photos.load()
             stack.append(.photos(0))
         case .live(let kind):
@@ -513,7 +515,7 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Şimdi Çalıyor", action: .nowPlaying),
             MenuItem(title: "Oyunlar", action: .push("Oyunlar") { [unowned self] in self.gamesMenu() }),
             MenuItem(title: "Kamera", action: .camera),
-            MenuItem(title: "Fotoğraflar", action: .photos),
+            MenuItem(title: "Fotoğraflar", action: .push("Fotoğraflar") { [unowned self] in self.photosMenu() }),
             MenuItem(title: "Ayarlar", action: .live(.settings)),
         ])
     }
@@ -754,12 +756,28 @@ final class IPodModel: ObservableObject {
         }
     }
 
+    private func photosMenu() -> [MenuItem] {
+        let count = { (favorites: Bool) in PhotoLibrary.count(favorites: favorites).map(String.init) }
+        return [
+            MenuItem(title: "Tüm Fotoğraflar", action: .photos(favorites: false), detail: count(false)),
+            MenuItem(title: "Favoriler", action: .photos(favorites: true), detail: count(true)),
+        ]
+    }
+
+    /// After the list changed under the photo screen, keeps its index on a photo that exists.
+    private func clampPhotoIndex(_ index: Int) {
+        if case .photos = current {
+            stack[stack.count - 1] = .photos(min(index, max(photos.assets.count - 1, 0)))
+        }
+    }
+
     private func photoMenu(_ index: Int) -> [MenuItem] {
         let asset = photos.assets[index]
-        let favorite = MenuItem(title: asset.isFavorite ? "Sık Kullanılanlardan Çıkar" : "Sık Kullanılanlara Ekle",
+        let favorite = MenuItem(title: asset.isFavorite ? "Favorilerden Çıkar" : "Favorilere Ekle",
                                 action: .run { [unowned self] in
-            self.photos.toggleFavorite(index)
             self.menu()
+            // In Favoriler, a removed photo leaves the list.
+            self.photos.toggleFavorite(index) { [unowned self] in self.clampPhotoIndex(index) }
         })
         let info = MenuItem(title: "Bilgi", action: .push("Bilgi") {
             let formatter = DateFormatter()
@@ -774,9 +792,7 @@ final class IPodModel: ObservableObject {
                 guard deleted else { return }
                 // Back on the photos, at the one that took its place (or the new last one).
                 self.menu()
-                if case .photos = self.current {
-                    self.stack[self.stack.count - 1] = .photos(min(index, max(self.photos.assets.count - 1, 0)))
-                }
+                self.clampPhotoIndex(index)
             }
         })
         return [favorite, info, delete]
