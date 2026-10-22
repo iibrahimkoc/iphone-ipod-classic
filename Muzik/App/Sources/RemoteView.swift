@@ -7,6 +7,8 @@ struct RemoteView: View {
     @State private var draggingVolume = false
     @State private var lastVolumeSend = Date.distantPast
     @State private var sentVolume = -1
+    @State private var startAtLogin = LoginItem.enabled
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 12) {
@@ -64,6 +66,18 @@ struct RemoteView: View {
             }
 
             Divider()
+            Button {
+                NSApp.setActivationPolicy(.regular)
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Şarkı Gönder…", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            Toggle("Mac açılınca başlat", isOn: $startAtLogin)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .onChange(of: startAtLogin) { LoginItem.enabled = $0 }
             HStack {
                 Text(phone.name ?? "")
                     .font(.caption)
