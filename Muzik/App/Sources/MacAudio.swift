@@ -22,13 +22,6 @@ final class MacAudio {
         playing = now
     }
 
-    /// The Mac's sound goes to AirPods or other Bluetooth headphones.
-    static var bluetoothOutput: Bool {
-        guard let device = defaultOutput() else { return false }
-        let transport: UInt32 = property(device, kAudioDevicePropertyTransportType) ?? 0
-        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
-    }
-
     private static func outputRunning() -> Bool {
         guard let device = defaultOutput() else { return false }
         let running: UInt32 = property(device, kAudioDevicePropertyDeviceIsRunningSomewhere) ?? 0

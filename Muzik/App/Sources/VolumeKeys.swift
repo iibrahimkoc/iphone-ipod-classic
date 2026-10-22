@@ -52,15 +52,14 @@ enum VolumeKeys {
         CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
     }
 
-    /// The iPod gets the keys when it started playing after the Mac's own sound did. Paused, it
-    /// keeps play/pause unless the Mac has the AirPods (then the Mac's player is the one meant);
-    /// the volume keys only go to it while it plays.
+    /// The iPod gets the keys when it was used (started, paused, a key) after the Mac's own sound
+    /// last started. Whether the Mac's sound is still on doesn't count: browsers keep the output
+    /// running for a while after a video is paused. The volume keys only go to it while it plays.
     private static func toPhone(volume: Bool) -> Bool {
         let phone = AppDelegate.phone, mac = AppDelegate.macAudio
         guard phone.found, let status = phone.nowPlaying, !status.title.isEmpty else { return false }
-        let phoneIsLast = phone.lastStarted >= mac.lastStarted
-        if status.playing { return phoneIsLast || !mac.playing }
-        return !volume && phoneIsLast && !mac.playing && !MacAudio.bluetoothOutput
+        if volume && !status.playing { return false }
+        return phone.lastUsed >= mac.lastStarted || (status.playing && !mac.playing)
     }
 
     /// Swallows the volume and media keys meant for the iPod and turns them into its commands;

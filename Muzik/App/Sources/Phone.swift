@@ -25,10 +25,14 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
 
     @Published private(set) var name: String?
     @Published private(set) var nowPlaying: NowPlaying? {
-        didSet { if nowPlaying?.playing == true && oldValue?.playing != true { lastStarted = Date() } }
+        didSet {
+            // Starting counts, and so does pausing (not the first status read at launch).
+            let playing = nowPlaying?.playing == true
+            if playing ? oldValue?.playing != true : oldValue?.playing == true { lastUsed = Date() }
+        }
     }
-    /// When the iPod last started playing (as the status showed it); distantPast if not since launch.
-    private(set) var lastStarted = Date.distantPast
+    /// When the iPod was last started, paused or sent a command; distantPast if not since launch.
+    private(set) var lastUsed = Date.distantPast
     /// Set while the menu bar remote is open, so the status is read more often while it is seen.
     var watching = false {
         didSet { if watching { refreshStatus() } }
@@ -65,6 +69,7 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
 
     /// Sends a command to the phone app: toggle, next, prev or "vol <0-100>".
     func command(_ command: String) {
+        lastUsed = Date()
         let path = "\(folder)/.cmd.tmp"
         ssh("printf %s \(quote(command)) > \(quote(path)) && mv \(quote(path)) \(quote(folder + "/.command"))") { _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.refreshStatus() }
