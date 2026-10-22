@@ -28,6 +28,9 @@ struct ContentView: View {
     @State private var dropTargeted = false
     @State private var uploading = false
     @State private var askingAddress = false
+    /// "Tek albüm yap": everything in the list becomes one album, in list order.
+    @State private var singleAlbum = false
+    @State private var albumName = "Piyano"
     @State private var address = ""
 
     private var readyCount: Int { tracks.filter { $0.info != nil }.count }
@@ -103,6 +106,23 @@ struct ContentView: View {
     }
 
     private var footer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !allDone {
+                HStack {
+                    Toggle("Tek albüm yap:", isOn: $singleAlbum)
+                    TextField("Albüm adı", text: $albumName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 180)
+                        .disabled(!singleAlbum)
+                }
+                .font(.callout)
+            }
+            footerButtons
+        }
+        .padding(12)
+    }
+
+    private var footerButtons: some View {
         HStack {
             phoneStatus
             Spacer()
@@ -120,7 +140,22 @@ struct ContentView: View {
                     .disabled(readyCount == 0 || uploading || !phone.found)
             }
         }
-        .padding(12)
+    }
+
+    /// The tracks to tag, with the album overridden when "Tek albüm yap" is on.
+    private func itemsToTag() -> [(UUID, URL, Tagger.Info)] {
+        let items = tracks.compactMap { track in track.info.map { (track.id, track.file, $0) } }
+        let name = albumName.trimmingCharacters(in: .whitespaces)
+        guard singleAlbum, !name.isEmpty else { return items }
+        return items.enumerated().map { index, item in
+            var info = item.2
+            info.collectionName = name
+            info.albumArtist = "Çeşitli Sanatçılar"
+            info.trackNumber = index + 1
+            info.trackCount = items.count
+            info.artworkUrl100 = items.first?.2.artworkUrl100 ?? info.artworkUrl100
+            return (item.0, item.1, info)
+        }
     }
 
     private var phoneStatus: some View {
@@ -185,7 +220,7 @@ struct ContentView: View {
     }
 
     private func upload() {
-        let items = tracks.compactMap { track in track.info.map { (track.id, track.file, $0) } }
+        let items = itemsToTag()
         guard !items.isEmpty else { return }
         uploading = true
         items.forEach { update($0.0, .adding) }
@@ -201,7 +236,7 @@ struct ContentView: View {
 
     /// Tags the files, then copies them straight into the iPod's music folder over Wi-Fi.
     private func sendToPhone() {
-        let items = tracks.compactMap { track in track.info.map { (track.id, track.file, $0) } }
+        let items = itemsToTag()
         guard !items.isEmpty else { return }
         uploading = true
         items.forEach { update($0.0, .adding) }

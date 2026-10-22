@@ -84,7 +84,8 @@ def write_tags(path, info):
     tags.delall("APIC")
     tags.add(TIT2(encoding=3, text=info["trackName"]))
     tags.add(TPE1(encoding=3, text=info["artistName"]))
-    tags.add(TPE2(encoding=3, text=info["artistName"]))
+    # "albumArtist" groups songs by different artists into one album (e.g. "Çeşitli Sanatçılar").
+    tags.add(TPE2(encoding=3, text=info.get("albumArtist") or info["artistName"]))
     tags.add(TALB(encoding=3, text=info["collectionName"]))
     if info.get("releaseDate"):
         tags.add(TDRC(encoding=3, text=info["releaseDate"][:4]))
@@ -113,7 +114,7 @@ def collect(args):
 
 
 INFO_KEYS = ("trackName", "artistName", "collectionName", "artworkUrl100", "releaseDate",
-             "primaryGenreName", "trackNumber", "trackCount")
+             "primaryGenreName", "trackNumber", "trackCount", "albumArtist")
 
 
 def json_lookup(paths):

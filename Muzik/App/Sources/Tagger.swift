@@ -11,6 +11,8 @@ enum Tagger {
         var primaryGenreName: String?
         var trackNumber: Int?
         var trackCount: Int?
+        /// Set when songs by different artists are put into one album.
+        var albumArtist: String?
 
         var artworkURL: URL? {
             artworkUrl100.flatMap { URL(string: $0.replacingOccurrences(of: "100x100bb", with: "300x300bb")) }
