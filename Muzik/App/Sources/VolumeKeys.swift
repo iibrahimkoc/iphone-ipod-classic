@@ -1,8 +1,10 @@
 import AppKit
 import os
 
-/// "Mac tuşları iPod'da": while the iPod is found, the Mac's volume up/down and mute keys change
-/// the iPod's volume instead of the Mac's, and play/pause, next and previous control its player. Catching them takes an event tap, so the app has to be
+/// "Mac ses tuşları iPod'da": while the iPod is playing, the Mac's volume up/down and mute keys
+/// change the iPod's volume instead of the Mac's; when it is paused they are the Mac's again.
+/// Play/pause, next and previous are left to macOS, which sends them to the app in Now Playing
+/// (see MacNowPlaying), so they work for the Mac's own players too. Catching the keys takes an event tap, so the app has to be
 /// allowed under Privacy & Security → Accessibility (again after every rebuild: the ad-hoc
 /// signature changes).
 enum VolumeKeys {
@@ -51,7 +53,7 @@ enum VolumeKeys {
         CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
     }
 
-    /// Swallows the volume and media keys and turns them into iPod commands; everything else passes through.
+    /// Swallows the volume keys and turns them into iPod commands; everything else passes through.
     private static func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -61,8 +63,8 @@ enum VolumeKeys {
         guard let key = NSEvent(cgEvent: event), key.subtype.rawValue == 8 else {
             return Unmanaged.passUnretained(event)
         }
-        guard phone.found else {
-            log.notice("key passed on: iPod not found")
+        guard phone.found, phone.nowPlaying?.playing == true else {
+            log.notice("key passed on: iPod not playing")
             return Unmanaged.passUnretained(event)
         }
         let code = (key.data1 & 0xFFFF0000) >> 16
@@ -73,9 +75,6 @@ enum VolumeKeys {
         case 0: if pressed { phone.stepVolume(1) }   // NX_KEYTYPE_SOUND_UP
         case 1: if pressed { phone.stepVolume(-1) }  // NX_KEYTYPE_SOUND_DOWN
         case 7: if pressed && !repeated { phone.toggleMute() }  // NX_KEYTYPE_MUTE
-        case 16: if pressed && !repeated { phone.command("toggle") }  // NX_KEYTYPE_PLAY
-        case 17, 19: if pressed && !repeated { phone.command("next") }  // NX_KEYTYPE_NEXT, _FAST
-        case 18, 20: if pressed && !repeated { phone.command("prev") }  // NX_KEYTYPE_PREVIOUS, _REWIND
         default: return Unmanaged.passUnretained(event)
         }
         return nil

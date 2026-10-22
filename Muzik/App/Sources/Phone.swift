@@ -25,7 +25,7 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
 
     @Published private(set) var name: String?
     @Published private(set) var nowPlaying: NowPlaying?
-    /// Set while the menu bar remote is open, so the status is only polled when it is seen.
+    /// Set while the menu bar remote is open, so the status is read more often while it is seen.
     var watching = false {
         didSet { if watching { refreshStatus() } }
     }
@@ -47,8 +47,12 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         browser.delegate = self
         browser.searchForServices(ofType: "_ipodmuzik._tcp.", inDomain: "local.")
         probeTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.probe() }
+        // Always read (the Mac's Now Playing follows it), every 1.5 s while the remote is open, else every 4.5 s.
+        var tick = 0
         statusTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            if self?.watching == true { self?.refreshStatus() }
+            tick += 1
+            guard let self = self, self.watching || tick % 3 == 0 else { return }
+            self.refreshStatus()
         }
         probe()
     }
@@ -128,7 +132,10 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
     /// Runs a command on the phone. The SSH connection is kept open between calls (ControlMaster),
     /// so the remote reacts without a new handshake each time.
     private func ssh(_ command: String, completion: @escaping (Data?) -> Void) {
-        guard let host = host else { return completion(nil) }
+        guard let host = host else {
+            if nowPlaying != nil { DispatchQueue.main.async { self.nowPlaying = nil } }
+            return completion(nil)
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=4", "-o", "StrictHostKeyChecking=accept-new",

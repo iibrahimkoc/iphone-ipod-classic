@@ -16,6 +16,7 @@ struct iPodMuzikApp: App {
 /// LoginItem) the app gets "--gizli" and doesn't show the window.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let phone = Phone()
+    private let nowPlaying = MacNowPlaying(phone: AppDelegate.phone)
 
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
