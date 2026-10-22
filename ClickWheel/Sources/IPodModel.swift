@@ -727,14 +727,9 @@ final class VolumeController: ObservableObject {
 /// It is played as a system sound, which follows the ringer volume instead of the media
 /// volume, so turning the music up or down with the side buttons doesn't change the click.
 /// (Like all system sounds it is muted by the silent switch.)
-/// System sounds always come out of the phone's speaker though, so with headphones connected
-/// the click is played through the app's audio session instead and follows the music there.
 enum Feedback {
     private static let volumeKey = "clickVolume"
     private static var soundID: SystemSoundID = 0
-    /// A few players taking turns, so fast wheel turns don't cut the previous tick short.
-    private static var players: [AVAudioPlayer] = []
-    private static var nextPlayer = 0
 
     /// Amplitude of the click sample; persisted so the chosen level survives relaunches.
     static var volume: Double {
@@ -746,26 +741,10 @@ enum Feedback {
                 AudioServicesDisposeSystemSoundID(soundID)
                 soundID = 0
             }
-            players = []
         }
     }
 
     static func tick() {
-        let onSpeaker = AVAudioSession.sharedInstance().currentRoute.outputs
-            .contains { $0.portType == .builtInSpeaker || $0.portType == .builtInReceiver }
-        if !onSpeaker {
-            if players.isEmpty, let url = writeClick(volume: volume) {
-                players = (0 ..< 4).compactMap { _ in try? AVAudioPlayer(contentsOf: url) }
-                players.forEach { $0.prepareToPlay() }
-            }
-            if !players.isEmpty {
-                let player = players[nextPlayer % players.count]
-                nextPlayer += 1
-                player.currentTime = 0
-                player.play()
-                return
-            }
-        }
         if soundID == 0, let url = writeClick(volume: volume) {
             AudioServicesCreateSystemSoundID(url as CFURL, &soundID)
         }
