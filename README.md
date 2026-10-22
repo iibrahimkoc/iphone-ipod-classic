@@ -28,8 +28,11 @@ Both packages install under `/var/jb`, so they only run while the phone is jailb
 
 `Muzik/muzik.sh` tags MP3s converted from YouTube (title, artist, album, year, genre, cover from the
 iTunes Search API, whichever order the file name uses) and adds them to the Music app; then sync the
-iPhone from Finder. `--deneme` previews, `--evet` skips the questions. Processed files move to
-`~/Downloads/iPod-eklendi/`.
+iPhone from Finder. `--deneme` previews, `--evet` skips the questions. With no arguments it scans ~/Downloads and moves
+processed files to `~/Downloads/iPod-eklendi/`.
+
+`Muzik/build-app.sh` builds **iPod Müzik.app** in ~/Applications: drop MP3s on its icon to do the same
+without the terminal.
 
 ## After a reboot
 

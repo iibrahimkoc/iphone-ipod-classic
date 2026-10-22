@@ -109,7 +109,8 @@ def collect(args):
 def main():
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     dry_run, accept_all = "--deneme" in flags, "--evet" in flags
-    files = collect([a for a in sys.argv[1:] if not a.startswith("--")])
+    given = [a for a in sys.argv[1:] if not a.startswith("--")]
+    files = collect(given)
     if not files:
         print("Mp3 bulunamadı.")
         return
@@ -139,8 +140,11 @@ def main():
                 continue
         write_tags(path, info)
         add_to_music(path)
-        DONE_DIR.mkdir(exist_ok=True)
-        shutil.move(str(path), DONE_DIR / path.name)
+        # Only the default Downloads scan moves files away, so the next scan skips them;
+        # dropped files stay where they are (Music keeps its own copy).
+        if not given:
+            DONE_DIR.mkdir(exist_ok=True)
+            shutil.move(str(path), DONE_DIR / path.name)
         print("  ✓ Müzik uygulamasına eklendi")
         added += 1
 
