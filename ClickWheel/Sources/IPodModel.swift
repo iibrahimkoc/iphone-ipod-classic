@@ -97,6 +97,9 @@ final class IPodModel: ObservableObject {
     @Published private(set) var brightness = Double(UIScreen.main.brightness)
     @Published private(set) var clickVolume = Feedback.volume
     @Published private(set) var nowPlayingMode = NowPlayingMode.progress
+    /// The time shown in place of "iPod" on the main menu.
+    @Published private(set) var clock = IPodModel.time()
+    private var clockTimer: Timer?
 
     let player = PlayerController()
     let volume = VolumeController()
@@ -117,10 +120,27 @@ final class IPodModel: ObservableObject {
 
     init() {
         stack = [.list(mainMenu())]
+        startClock()
         battery.onQuarantineChange = { [unowned self] on in on ? self.enterQuarantine() : self.leaveQuarantine() }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) {
             [unowned self] _ in
             if self.battery.quarantine { self.scheduleLock() }
+        }
+    }
+
+    private static func time() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: Date())
+    }
+
+    /// Updates the clock on each minute boundary.
+    private func startClock() {
+        clock = Self.time()
+        let nextMinute = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+        DispatchQueue.main.asyncAfter(deadline: .now() + nextMinute + 0.05) { [weak self] in
+            self?.clock = Self.time()
+            self?.clockTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in self?.clock = Self.time() }
         }
     }
 
@@ -158,7 +178,7 @@ final class IPodModel: ObservableObject {
 
     var title: String {
         switch current {
-        case .list(let list): return list.title
+        case .list(let list): return stack.count == 1 ? clock : list.title
         case .nowPlaying: return "Şimdi Çalıyor"
         case .clickVolume: return "Tık Sesi"
         case .coverFlow: return "Cover Flow"
