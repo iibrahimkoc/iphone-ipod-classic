@@ -127,15 +127,17 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         log.notice("photo done, error: \(String(describing: error), privacy: .public)")
         guard error == nil, let full = photo.fileDataRepresentation().flatMap(UIImage.init(data:)),
-              let data = Self.crop(full, toAspect: visibleAspect).jpegData(compressionQuality: 0.92) else {
+              let data = Self.crop(full, toAspect: visibleAspect, mirrored: input?.device.position == .front)
+                .jpegData(compressionQuality: 0.92) else {
             return DispatchQueue.main.async { self.show("Çekilemedi") }
         }
         save(data)
     }
 
     /// The middle of `image` at the preview's aspect ratio, which is what the preview shows
-    /// (it fills the screen and cuts off the rest).
-    private static func crop(_ image: UIImage, toAspect aspect: CGFloat) -> UIImage {
+    /// (it fills the screen and cuts off the rest). The front camera's preview is a mirror image,
+    /// so its photos are mirrored too.
+    private static func crop(_ image: UIImage, toAspect aspect: CGFloat, mirrored: Bool) -> UIImage {
         let size = image.size
         var crop = size
         if size.width / size.height < aspect {
@@ -145,7 +147,11 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
         }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
-        return UIGraphicsImageRenderer(size: crop, format: format).image { _ in
+        return UIGraphicsImageRenderer(size: crop, format: format).image { context in
+            if mirrored {
+                context.cgContext.translateBy(x: crop.width, y: 0)
+                context.cgContext.scaleBy(x: -1, y: 1)
+            }
             image.draw(at: CGPoint(x: (crop.width - size.width) / 2, y: (crop.height - size.height) / 2))
         }
     }
