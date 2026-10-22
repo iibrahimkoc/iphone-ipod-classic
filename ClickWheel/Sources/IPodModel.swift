@@ -706,8 +706,9 @@ enum Feedback {
     }
 }
 
-/// The system brightness, as Control Center sets it. UIScreen.brightness alone is only an override
-/// that iOS drops when the screen turns off, so the level would jump back after a lock.
+/// The system brightness, as Control Center sets it. UIScreen.brightness is only an override: UIKit
+/// remembers the level from before the app's first change and puts it back when the screen turns off,
+/// so it is used only when the private call is missing.
 enum Brightness {
     private typealias SetFn = @convention(c) (Float, Int32) -> Void
     private static let setSystem: SetFn? = {
@@ -717,7 +718,10 @@ enum Brightness {
     }()
 
     static func set(_ level: Double) {
-        setSystem?(Float(level), 1)
-        UIScreen.main.brightness = CGFloat(level)
+        if let setSystem = setSystem {
+            setSystem(Float(level), 1)
+        } else {
+            UIScreen.main.brightness = CGFloat(level)
+        }
     }
 }
