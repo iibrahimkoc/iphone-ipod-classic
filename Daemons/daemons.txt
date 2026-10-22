@@ -1,0 +1,87 @@
+# launchd labels (system domain) disabled for iPod use. Lines starting with # are ignored.
+# Kept on purpose: Find My, phone/SIM services, Touch ID, Bluetooth/CarKit, NFC, music/media, sync, Biome.
+
+# Siri
+com.apple.assistantd
+com.apple.assistant_service
+com.apple.assistant_cdmd
+com.apple.corespeechd
+com.apple.siriactionsd
+com.apple.siriinferenced
+com.apple.siriknowledged
+com.apple.siri.context.service
+com.apple.siri.acousticsignature
+com.apple.siri-distributed-evaluation
+com.apple.speechmodeltrainingd
+com.apple.SpeechRecognitionCore.brokerd
+
+# Spotlight and suggestions
+com.apple.suggestd
+com.apple.searchd
+com.apple.spotlight.IndexAgent
+com.apple.spotlightknowledged
+com.apple.corespotlightservice
+com.apple.multimodalsearchd
+com.apple.duetexpertd
+com.apple.proactiveeventtrackerd
+com.apple.parsecd
+com.apple.parsec-fbf
+com.apple.coreparsec.silhouette
+
+# Mail and Messages
+com.apple.email.maild
+com.apple.imagent
+com.apple.imdpersistence.IMDPersistenceAgent
+
+# Health
+com.apple.healthd
+com.apple.healthappd
+com.apple.healthrecordsd
+
+# Home
+com.apple.homed
+com.apple.announced
+
+# Screen Time and Family
+com.apple.ScreenTimeAgent
+com.apple.familycircled
+com.apple.FamilyControlsAgent
+com.apple.UsageTrackingAgent
+
+# Ads, analytics, experiments
+com.apple.ap.adprivacyd
+com.apple.ap.promotedcontentd
+com.apple.amsengagementd
+com.apple.triald
+com.apple.dprivacyd
+com.apple.diagnosticextensionsd
+com.apple.rtcreportingd
+
+# Photos
+com.apple.photoanalysisd
+com.apple.cloudphotod
+
+# Maps, location history, weather
+com.apple.routined
+com.apple.maps.destinationd
+com.apple.Maps.mapspushd
+com.apple.Maps.geocorrectiond
+com.apple.navd
+com.apple.weatherd
+
+# Other
+com.apple.tipsd
+com.apple.remindd
+com.apple.calaccessd
+com.apple.passd
+com.apple.seserviced
+com.apple.bookassetd
+com.apple.videosubscriptionsd
+com.apple.tvremoted
+com.apple.watchlistd
+com.apple.SafariBookmarksSyncAgent
+com.apple.WebBookmarks.webbookmarksd
+com.apple.translationd
+com.apple.mobilerepaird
+com.apple.coreidvd
+com.apple.idcredd
