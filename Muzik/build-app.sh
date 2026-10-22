@@ -12,5 +12,8 @@ rm -rf "$APP"
 cp -R build/Build/Products/Release/iPodMuzik.app "$APP"
 plutil -insert MuzikFolder -string "$DIR" "$APP/Contents/Info.plist"
 # The executable has an ASCII name: codesign fails on the non-ASCII "ü".
-codesign -f -s - "$APP"
+# Signed with the Apple Development certificate when there is one, so the app keeps the same
+# identity across builds and macOS keeps its Accessibility permission; ad-hoc otherwise.
+IDENTITY=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development[^"]*\)".*/\1/p' | head -1)
+codesign -f -s "${IDENTITY:--}" "$APP"
 echo "$APP"
