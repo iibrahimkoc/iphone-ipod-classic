@@ -9,7 +9,8 @@ struct Track: Identifiable {
         case adding
         case added
         case sent
-        case failed(String)
+        /// With the tags it was going to get, when sending can be tried again.
+        case failed(String, retry: Tagger.Info? = nil)
     }
 
     let id = UUID()
@@ -18,6 +19,11 @@ struct Track: Identifiable {
 
     var info: Tagger.Info? {
         if case .ready(let info, _) = state { return info }
+        return nil
+    }
+
+    var retryInfo: Tagger.Info? {
+        if case .failed(_, let info) = state { return info }
         return nil
     }
 }
@@ -33,12 +39,13 @@ struct ContentView: View {
     @State private var albumName = "Piyano"
     @State private var address = ""
 
-    private var readyCount: Int { tracks.filter { $0.info != nil }.count }
+    private var readyCount: Int { tracks.filter { $0.info != nil || $0.retryInfo != nil }.count }
     private var searching: Bool { tracks.contains { if case .searching = $0.state { return true }; return false } }
     private var allDone: Bool {
         !tracks.isEmpty && tracks.allSatisfy {
             switch $0.state {
-            case .added, .sent, .duplicate, .failed: return true
+            case .failed(_, let retry): return retry == nil
+            case .added, .sent, .duplicate: return true
             default: return false
             }
         }
@@ -145,9 +152,11 @@ struct ContentView: View {
     /// The tracks to tag, with the album overridden when "Tek albüm yap" is on.
     private func itemsToTag() -> [(UUID, URL, Tagger.Info)] {
         let items = tracks.compactMap { track in track.info.map { (track.id, track.file, $0) } }
+        // Failed sends keep the tags they were given (album, track number), so they go as they were.
+        let retries = tracks.compactMap { track in track.retryInfo.map { (track.id, track.file, $0) } }
         let name = albumName.trimmingCharacters(in: .whitespaces)
-        guard singleAlbum, !name.isEmpty else { return items }
-        return items.enumerated().map { index, item in
+        guard singleAlbum, !name.isEmpty else { return retries + items }
+        return retries + items.enumerated().map { index, item in
             var info = item.2
             info.collectionName = name
             info.albumArtist = "Çeşitli Sanatçılar"
@@ -226,9 +235,9 @@ struct ContentView: View {
         items.forEach { update($0.0, .adding) }
         Task {
             let results = (try? await Tagger.apply(items.map { ($0.1, $0.2) })) ?? []
-            for (id, file, _) in items {
+            for (id, file, info) in items {
                 let result = results.first { $0.path == file.path }
-                update(id, result?.ok == true ? .added : .failed(result?.error ?? "Eklenemedi"))
+                update(id, result?.ok == true ? .added : .failed(result?.error ?? "Eklenemedi", retry: info))
             }
             uploading = false
         }
@@ -244,14 +253,14 @@ struct ContentView: View {
             let tagged = (try? await Tagger.tagOnly(items.map { ($0.1, $0.2) })) ?? []
             for (id, file, info) in items {
                 guard tagged.first(where: { $0.path == file.path })?.ok == true else {
-                    update(id, .failed("Etiketlenemedi"))
+                    update(id, .failed("Etiketlenemedi", retry: info))
                     continue
                 }
                 do {
                     try await phone.send(file, as: fileName(info, ext: file.pathExtension))
                     update(id, .sent)
                 } catch {
-                    update(id, .failed("Gönderilemedi (iPod açık ve aynı Wi-Fi'de mi?)"))
+                    update(id, .failed("Gönderilemedi (iPod açık ve aynı Wi-Fi'de mi?)", retry: info))
                 }
             }
             uploading = false
@@ -278,7 +287,7 @@ private struct TrackRow: View {
         HStack(spacing: 12) {
             cover
             VStack(alignment: .leading, spacing: 2) {
-                Text(track.info?.trackName ?? track.file.deletingPathExtension().lastPathComponent)
+                Text((track.info ?? track.retryInfo)?.trackName ?? track.file.deletingPathExtension().lastPathComponent)
                     .font(.headline)
                     .lineLimit(1)
                 Text(subtitle)
@@ -301,13 +310,13 @@ private struct TrackRow: View {
         case .adding: return "Ekleniyor…"
         case .added: return "Mac'teki Müzik uygulamasına eklendi"
         case .sent: return "iPod'a gönderildi"
-        case .failed(let message): return message
+        case .failed(let message, let retry): return message + (retry == nil ? "" : " · tekrar denemek için iPod'a Gönder")
         }
     }
 
     private var cover: some View {
         Group {
-            if let url = track.info?.artworkURL {
+            if let url = (track.info ?? track.retryInfo)?.artworkURL {
                 AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
             } else {
                 ZStack {
