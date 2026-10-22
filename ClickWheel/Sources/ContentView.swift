@@ -489,13 +489,13 @@ struct MacRemoteView: View {
                     .lineLimit(2)
                 }
                 Spacer(minLength: 0)
+                // What the center button does: pause while it plays, play while it doesn't.
                 if remote.connected {
-                    HStack(spacing: 6) {
-                        Image(systemName: remote.playing ? "play.fill" : "pause.fill")
-                        Text(remote.playing ? "Çalıyor" : "Durdu")
-                    }
-                    .font(.system(size: h * 0.07, weight: .semibold))
+                    Image(systemName: remote.playing ? "pause.fill" : "play.fill")
+                        .font(.system(size: h * 0.16))
+                        .frame(maxWidth: .infinity)
                 }
+                Spacer(minLength: 0)
                 HStack(spacing: 6) {
                     Image(systemName: remote.status?.muted == true ? "speaker.slash.fill" : "speaker.fill")
                     GeometryReader { bar in
