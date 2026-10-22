@@ -16,7 +16,7 @@ echo '{ Filter = { Bundles = ( "com.apple.springboard" ); }; }' > "$DIR/iPodKios
 cat > "$PKG/DEBIAN/control" <<CONTROL
 Package: com.ibrahimkoc.ipodkiosk
 Name: iPodKiosk
-Version: 1.7
+Version: 1.7.1
 Architecture: iphoneos-arm64
 Description: Keeps the iPod click-wheel app in front
 Maintainer: ibrahimkoc
