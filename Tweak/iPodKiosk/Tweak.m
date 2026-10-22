@@ -164,7 +164,7 @@ __attribute__((constructor)) static void init(void) {
         if (blanked || escaped || !isLocked()) return;
         // A direct unlock request is ignored here, so act as if the home button had been pressed,
         // which is what the lock screen asks for ("press home to open").
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
             id button = SEND(id)(UIApplication.sharedApplication, NSSelectorFromString(@"homeHardwareButton"));
             id actions = button ? SEND(id)(button, NSSelectorFromString(@"buttonActions")) : nil;
             if (actions && singlePressUp) {
