@@ -10,6 +10,8 @@ enum MenuAction {
     case nowPlaying
     case clickVolume
     case coverFlow
+    case camera
+    case photos
     case live(LiveList)
     case run(() -> Void)
 }
@@ -75,6 +77,9 @@ enum Screen {
     case password(PasswordEntry)
     case chess
     case game
+    case camera
+    /// Index of the photo on screen, newest first.
+    case photos(Int)
 }
 
 /// What the bar at the bottom of Now Playing shows; the center button cycles through progress,
@@ -114,6 +119,8 @@ final class IPodModel: ObservableObject {
     let battery = BatteryMonitor()
     let library = SongLibrary()
     let chess = ChessGame()
+    let camera = CameraController()
+    let photos = PhotoLibrary()
     /// The emulated game on screen.
     private(set) var emulator: Emulator?
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
@@ -198,6 +205,8 @@ final class IPodModel: ObservableObject {
         case .password: return "Şifre"
         case .chess: return "Satranç"
         case .game: return emulator?.title ?? "Oyun"
+        case .camera: return "Kamera"
+        case .photos: return "Fotoğraflar"
         }
     }
 
@@ -302,6 +311,13 @@ final class IPodModel: ObservableObject {
             if chess.scroll(delta) { Feedback.tick() }
         case .game:
             break
+        case .camera:
+            if camera.zoom(by: delta) { Feedback.tick() }
+        case .photos(let index):
+            let new = min(max(index + delta, 0), max(photos.assets.count - 1, 0))
+            guard new != index else { return }
+            stack[stack.count - 1] = .photos(new)
+            Feedback.tick()
         }
     }
 
@@ -328,6 +344,11 @@ final class IPodModel: ObservableObject {
             return
         }
         if case .game = current { return }
+        if case .camera = current {
+            camera.capture()
+            return
+        }
+        if case .photos = current { return }
         if case .nowPlaying = current {
             Feedback.tick()
             // From the rating, a tap goes back to the progress bar.
@@ -361,6 +382,12 @@ final class IPodModel: ObservableObject {
         case .coverFlow:
             albums = library.albums(of: library.songs)
             stack.append(.coverFlow(0))
+        case .camera:
+            camera.start()
+            stack.append(.camera)
+        case .photos:
+            photos.load()
+            stack.append(.photos(0))
         case .live(let kind):
             stack.append(.live(kind, selection: 0, top: 0))
             switch kind {
@@ -401,6 +428,8 @@ final class IPodModel: ObservableObject {
         case .game:
             emulator?.stop()
             emulator = nil
+        case .camera:
+            camera.stop()
         default:
             break
         }
@@ -417,6 +446,16 @@ final class IPodModel: ObservableObject {
         }
         dislikeSkip = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
+    /// The wheel's ⏯: switches cameras on the camera screen, plays or pauses everywhere else.
+    func playPause() {
+        if case .camera = current {
+            Feedback.tick()
+            camera.flip()
+        } else {
+            player.togglePlay()
+        }
     }
 
     private func showNowPlaying() {
@@ -453,6 +492,8 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Şarkıları Karıştır", action: .shuffleAll),
             MenuItem(title: "Şimdi Çalıyor", action: .nowPlaying),
             MenuItem(title: "Oyunlar", action: .push("Oyunlar") { [unowned self] in self.gamesMenu() }),
+            MenuItem(title: "Kamera", action: .camera),
+            MenuItem(title: "Fotoğraflar", action: .photos),
             MenuItem(title: "Ayarlar", action: .live(.settings)),
         ])
     }

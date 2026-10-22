@@ -23,6 +23,9 @@ targets:
         UIBackgroundModes: [audio]
         NSLocalNetworkUsageDescription: "Mac'teki iPod Müzik uygulamasının telefonu bulup şarkı gönderebilmesi için."
         NSBonjourServices: [_ipodmuzik._tcp]
+        NSCameraUsageDescription: "Kamera ile fotoğraf çekmek için."
+        NSPhotoLibraryUsageDescription: "Çektiğin fotoğrafları göstermek için."
+        NSPhotoLibraryAddUsageDescription: "Çektiğin fotoğrafları Film Rulosu'na kaydetmek için."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ibrahimkoc.clickwheel

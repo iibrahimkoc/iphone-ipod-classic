@@ -22,7 +22,7 @@ struct ContentView: View {
                     onSelect: model.select,
                     onHold: model.hold,
                     onMenu: model.menu,
-                    onPlayPause: model.player.togglePlay,
+                    onPlayPause: model.playPause,
                     onNext: model.player.next,
                     onPrevious: model.player.previous)
                     .overlay(Group {
@@ -119,6 +119,10 @@ struct ScreenView: View {
                             if let game = model.emulator {
                                 GameScreen(game: game, onTap: model.tapScreen, onLeave: model.menu)
                             }
+                        case .camera:
+                            CameraView(camera: model.camera)
+                        case .photos(let index):
+                            PhotoView(photos: model.photos, index: index)
                         }
                     }
                 }

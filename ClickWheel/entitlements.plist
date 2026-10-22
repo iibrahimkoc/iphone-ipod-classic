@@ -26,6 +26,9 @@
 	<array>
 		<string>kTCCServiceBluetoothAlways</string>
 		<string>kTCCServiceMediaLibrary</string>
+		<string>kTCCServiceCamera</string>
+		<string>kTCCServicePhotos</string>
+		<string>kTCCServicePhotosAdd</string>
 	</array>
 </dict>
 </plist>
