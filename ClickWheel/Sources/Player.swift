@@ -38,6 +38,13 @@ final class PlayerController: ObservableObject {
     let ratings = Ratings()
 
     private let player = AVPlayer()
+    /// When playback was last started. Starting can pull the AirPods over from the Mac, and while
+    /// they move the route passes through the speaker and iOS may report an interruption; neither
+    /// should stop the song that was just asked for.
+    private var resumedAt = Date.distantPast
+
+    /// True for a few seconds after playback starts, while the headphones may still be switching over.
+    var justResumed: Bool { Date().timeIntervalSince(resumedAt) < 4 }
     private var queue: [Song] = []
     /// The list as chosen, so turning shuffle off restores its order.
     private var original: [Song] = []
@@ -64,8 +71,15 @@ final class PlayerController: ObservableObject {
         })
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) {
             [weak self] note in
-            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
-            if type == .began { self?.pause() }
+            guard let self = self else { return }
+            let info = note.userInfo
+            let type = (info?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
+            if type == .began {
+                if !self.justResumed { self.pause() }
+            } else if type == .ended, self.justResumed {
+                // The interruption was the headphones switching over: carry on.
+                self.resume()
+            }
         })
         setUpRemoteCommands()
     }
@@ -166,6 +180,7 @@ final class PlayerController: ObservableObject {
         guard player.currentItem != nil else { return }
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
+        resumedAt = Date()
         player.play()
     }
 

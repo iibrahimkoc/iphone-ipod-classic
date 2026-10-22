@@ -748,7 +748,16 @@ final class AudioRouteController: ObservableObject {
     private var onHeadphonesLost: (() -> Void)?
 
     init(player: PlayerController) {
-        onHeadphonesLost = { [weak player] in player?.pause() }
+        onHeadphonesLost = { [weak self, weak player] in
+            guard let player = player else { return }
+            guard player.justResumed else { return player.pause() }
+            // Just started: the headphones may still be on their way over from the Mac. Pause only
+            // if the sound is still on the speaker once that had time to finish.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self?.update()
+                if self?.output == .speaker { player.pause() }
+            }
+        }
         observer = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
