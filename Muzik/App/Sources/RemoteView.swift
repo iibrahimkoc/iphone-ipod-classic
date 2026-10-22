@@ -2,13 +2,14 @@ import SwiftUI
 
 /// The menu bar remote: what the iPod is playing, transport buttons and its volume.
 struct RemoteView: View {
+    /// Opens the drag-and-drop window.
+    let openMain: () -> Void
     @EnvironmentObject private var phone: Phone
     @State private var volume = 50.0
     @State private var draggingVolume = false
     @State private var lastVolumeSend = Date.distantPast
     @State private var sentVolume = -1
     @State private var startAtLogin = LoginItem.enabled
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 12) {
@@ -66,10 +67,7 @@ struct RemoteView: View {
             }
 
             Divider()
-            Button {
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
-            } label: {
+            Button(action: openMain) {
                 Label("Şarkı Gönder…", systemImage: "square.and.arrow.up")
                     .frame(maxWidth: .infinity)
             }

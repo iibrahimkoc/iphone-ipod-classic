@@ -3,39 +3,70 @@ import SwiftUI
 @main
 struct iPodMuzikApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-    @StateObject private var phone = Phone()
 
+    /// Both windows are managed by the AppDelegate, so the app has no scenes of its own.
     var body: some Scene {
-        Window("iPod Müzik", id: "main") {
-            ContentView()
-                .environmentObject(phone)
-                .frame(minWidth: 460, minHeight: 520)
-        }
-        .windowResizability(.contentMinSize)
-
-        MenuBarExtra {
-            RemoteView()
-                .environmentObject(phone)
-        } label: {
-            Image(systemName: "ipod")
-        }
-        .menuBarExtraStyle(.window)
+        Settings { EmptyView() }
     }
 }
 
-/// A menu bar app (LSUIElement: no Dock icon). Started at login (see LoginItem) it gets "--gizli"
-/// and closes its window, leaving just the menu bar remote. Switching the activation policy at
-/// runtime instead left the menu bar item unclickable.
+/// A menu bar app (LSUIElement: no Dock icon). The remote lives in an NSStatusItem popover
+/// (SwiftUI's MenuBarExtra didn't respond to clicks in this setup), and the drag-and-drop
+/// window is a plain NSWindow so it can be reopened after being closed. Started at login (see
+/// LoginItem) the app gets "--gizli" and doesn't show the window.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static let phone = Phone()
+
+    private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
+    private lazy var window: NSWindow = {
+        let window = NSWindow(contentViewController: NSHostingController(
+            rootView: ContentView().environmentObject(Self.phone).frame(minWidth: 460, minHeight: 520)))
+        window.title = "iPod Müzik"
+        window.setContentSize(NSSize(width: 480, height: 560))
+        window.isReleasedWhenClosed = false
+        window.center()
+        return window
+    }()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard CommandLine.arguments.contains("--gizli") else { return }
-        DispatchQueue.main.async {
-            NSApp.windows.filter { $0.identifier?.rawValue.contains("main") == true }.forEach { $0.close() }
-        }
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: RemoteView(openMain: openMain).environmentObject(Self.phone))
+
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(systemSymbolName: "ipod", accessibilityDescription: "iPod")
+        item.button?.target = self
+        item.button?.action = #selector(togglePopover)
+        statusItem = item
+
+        if !CommandLine.arguments.contains("--gizli") { openMain() }
     }
 
     /// Closing the window keeps the menu bar remote running.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    @objc private func togglePopover() {
+        guard let button = statusItem?.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    /// Shows the drag-and-drop window (it is only hidden when closed).
+    private func openMain() {
+        popover.performClose(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Opening the app again (e.g. from Finder) shows the window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openMain()
+        return false
+    }
 }
 
 /// "Mac açılınca başlat": a LaunchAgent that opens the app hidden at login.
