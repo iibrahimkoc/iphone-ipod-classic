@@ -22,6 +22,14 @@
 	<array>
 		<string>com.apple.radios.plist</string>
 	</array>
+	<key>com.apple.security.iokit-user-client-class</key>
+	<array>
+		<string>IOSurfaceRootUserClient</string>
+		<string>AGXDeviceUserClient</string>
+		<string>AGXSharedUserClient</string>
+		<string>IOGPUDeviceUserClient</string>
+		<string>AppleJPEGDriverUserClient</string>
+	</array>
 	<key>com.apple.private.tcc.allow</key>
 	<array>
 		<string>kTCCServiceBluetoothAlways</string>

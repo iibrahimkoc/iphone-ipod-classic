@@ -140,6 +140,9 @@ final class IPodModel: ObservableObject {
         stack = [.list(mainMenu())]
         startClock()
         _ = remote
+        NotificationCenter.default.addObserver(forName: RemoteControl.shot, object: nil, queue: nil) { [unowned self] _ in
+            DispatchQueue.main.async { self.remoteShot() }
+        }
         battery.onQuarantineChange = { [unowned self] on in on ? self.enterQuarantine() : self.leaveQuarantine() }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) {
             [unowned self] _ in
@@ -446,6 +449,17 @@ final class IPodModel: ObservableObject {
         }
         dislikeSkip = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
+    /// The Mac's "shot" command: the camera screen opens (if it isn't already) and a photo is taken.
+    private func remoteShot() {
+        if case .camera = current {
+            camera.capture()
+            return
+        }
+        camera.start()
+        stack.append(.camera)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.camera.capture() }
     }
 
     /// The wheel's ⏯: switches cameras on the camera screen, plays or pauses everywhere else.

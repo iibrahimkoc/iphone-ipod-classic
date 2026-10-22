@@ -1,9 +1,15 @@
 import SwiftUI
 import AVFoundation
 import Photos
+import os
+
+private let log = Logger(subsystem: "com.ibrahimkoc.clickwheel", category: "camera")
 
 /// The camera on the iPod screen, like the iPod nano's: the center button takes a photo, the wheel
 /// zooms and ⏯ switches between the back and front cameras. Photos go to the Camera Roll.
+///
+/// Taking photos needs the iokit-user-client-class entitlement (see entitlements.plist): without
+/// it the app can't open IOSurfaces, so mediaserverd takes the photo but it never arrives.
 final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     let session = AVCaptureSession()
     @Published private(set) var zoom: CGFloat = 1
@@ -18,23 +24,41 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     private var input: AVCaptureDeviceInput?
     private var configured = false
     private var hideMessage: DispatchWorkItem?
+    private var observers: [NSObjectProtocol] = []
+
+    override init() {
+        super.init()
+        observers.append(NotificationCenter.default.addObserver(forName: .AVCaptureSessionRuntimeError, object: session,
+                                                                queue: nil) { [weak self] note in
+            let error = note.userInfo?[AVCaptureSessionErrorKey] as? Error
+            log.error("session error: \(String(describing: error), privacy: .public)")
+            DispatchQueue.main.async { self?.show("Kamera hatası") }
+        })
+    }
 
     static let maxZoom: CGFloat = 5
 
     func start() {
         zoom = 1
+        log.notice("start, access status \(AVCaptureDevice.authorizationStatus(for: .video).rawValue)")
         AVCaptureDevice.requestAccess(for: .video) { granted in
+            log.notice("access granted: \(granted)")
             guard granted else { return DispatchQueue.main.async { self.show("Kamera izni yok") } }
             self.queue.async {
                 if !self.configured {
                     self.session.beginConfiguration()
                     self.session.sessionPreset = .photo
                     if self.session.canAddOutput(self.output) { self.session.addOutput(self.output) }
+                    self.output.isHighResolutionCaptureEnabled = true
                     self.useCamera(front: false)
                     self.session.commitConfiguration()
                     self.configured = true
                 }
                 if !self.session.isRunning { self.session.startRunning() }
+                log.notice("running: \(self.session.isRunning), input: \(self.input != nil)")
+                if !self.session.isRunning || self.input == nil {
+                    DispatchQueue.main.async { self.show("Kamera açılamadı") }
+                }
             }
         }
     }
@@ -70,16 +94,25 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     func capture() {
         shots += 1
         queue.async {
-            guard self.session.isRunning else { return }
+            guard self.session.isRunning else {
+                log.error("capture while not running")
+                return DispatchQueue.main.async { self.show("Kamera açılamadı") }
+            }
             self.output.connection(with: .video)?.videoOrientation = .portrait
+            let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+            settings.isHighResolutionPhotoEnabled = true
+            log.notice("capturing")
             // The system plays the shutter sound.
-            self.output.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
+            self.output.capturePhoto(with: settings, delegate: self)
         }
     }
 
     private func useCamera(front: Bool) {
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: front ? .front : .back),
-              let new = try? AVCaptureDeviceInput(device: device) else { return }
+              let new = try? AVCaptureDeviceInput(device: device) else {
+            log.error("no camera device (front: \(front))")
+            return
+        }
         if let old = input { session.removeInput(old) }
         if session.canAddInput(new) {
             session.addInput(new)
@@ -90,16 +123,23 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        log.notice("photo done, error: \(String(describing: error), privacy: .public)")
         guard error == nil, let data = photo.fileDataRepresentation() else {
             return DispatchQueue.main.async { self.show("Çekilemedi") }
         }
+        save(data)
+    }
+
+    private func save(_ data: Data) {
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            log.notice("photos add status \(status.rawValue)")
             guard status == .authorized || status == .limited else {
                 return DispatchQueue.main.async { self.show("Fotoğraflar izni yok") }
             }
             PHPhotoLibrary.shared().performChanges({
                 PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
-            }) { saved, _ in
+            }) { saved, error in
+                log.notice("saved: \(saved), error: \(String(describing: error), privacy: .public)")
                 DispatchQueue.main.async { self.show(saved ? "Kaydedildi" : "Kaydedilemedi") }
             }
         }
