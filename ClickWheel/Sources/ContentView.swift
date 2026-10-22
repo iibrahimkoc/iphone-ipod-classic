@@ -24,6 +24,9 @@ struct ContentView: View {
                     onPlayPause: model.player.togglePlay,
                     onNext: model.player.next,
                     onPrevious: model.player.previous)
+                    .overlay(Group {
+                        if case .megaDrive = model.current { GamepadOverlay(onChange: model.setPad) }
+                    })
                     .frame(width: wheelSize, height: wheelSize)
                 Spacer(minLength: 0)
             }
@@ -109,6 +112,12 @@ struct ScreenView: View {
                             CoverFlowView(albums: model.albums, index: index)
                         case .chess:
                             ChessView(game: model.chess)
+                        case .megaDrive:
+                            if let game = model.megaDrive {
+                                GameScreen(game: game)
+                                    .onTapGesture { model.pressStart() }
+                                    .onLongPressGesture(minimumDuration: 0.8) { model.menu() }
+                            }
                         }
                     }
                 }

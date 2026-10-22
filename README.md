@@ -52,3 +52,7 @@ It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and
 
 **Oyunlar › Satranç** plays against Stockfish 19 (GPL-3.0, github.com/official-stockfish/Stockfish). `build.sh`
 builds it for iOS on the first run and bundles it as a separate executable that the app drives over UCI.
+
+**Oyunlar › Mega Drive** runs Mega Drive / Master System / Game Gear ROMs from `/var/mobile/Media/iPodOyun` through
+Genesis Plus GX (non-commercial license, github.com/libretro/Genesis-Plus-GX), linked in as a libretro core. The
+wheel is the D-pad and the center is B; tapping the screen is Start and a long press leaves, saving the game's place.

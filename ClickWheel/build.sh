@@ -4,6 +4,18 @@
 set -e
 cd "$(dirname "$0")"
 
+# Genesis Plus GX for Oyunlar › Mega Drive: a static libretro core the app links (see project.yml).
+GPGX=build/genesis
+if [ ! -f build/lib/libgenesis.a ]; then
+    [ -d "$GPGX" ] || git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX.git "$GPGX"
+    # The regular (dylib) build, since STATIC_LINKING leaves out the libretro-common file and
+    # path helpers it expects a frontend to have; its objects are then archived for linking.
+    make -C "$GPGX" -f Makefile.libretro -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 \
+        IOSSDK="$(xcrun -sdk iphoneos --show-sdk-path)" >/dev/null
+    mkdir -p build/lib
+    find "$GPGX" -name '*.o' -print0 | xargs -0 ar rcs build/lib/libgenesis.a
+fi
+
 xcodegen generate --quiet
 xcodebuild -project ClickWheel.xcodeproj -scheme ClickWheel -sdk iphoneos \
     -destination generic/platform=iOS -configuration Release -derivedDataPath build \
@@ -32,7 +44,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 2.9.0
+Version: 2.10.0
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc

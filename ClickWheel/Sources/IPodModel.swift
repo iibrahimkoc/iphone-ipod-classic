@@ -74,6 +74,7 @@ enum Screen {
     case live(LiveList, selection: Int, top: Int)
     case password(PasswordEntry)
     case chess
+    case megaDrive
 }
 
 /// What the bar at the bottom of Now Playing shows; the center button cycles through them,
@@ -110,6 +111,8 @@ final class IPodModel: ObservableObject {
     let battery = BatteryMonitor()
     let library = SongLibrary()
     let chess = ChessGame()
+    /// The Mega Drive game on screen.
+    private(set) var megaDrive: MegaDrive?
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
     private(set) lazy var sleepTimer = SleepTimer { [unowned self] done in self.player.fadeOutAndPause(completion: done) }
     /// Albums for Cover Flow, loaded when it opens.
@@ -189,6 +192,7 @@ final class IPodModel: ObservableObject {
         case .live(let kind, _, _): return kind.title
         case .password: return "Şifre"
         case .chess: return "Satranç"
+        case .megaDrive: return megaDrive?.title ?? "Mega Drive"
         }
     }
 
@@ -283,6 +287,8 @@ final class IPodModel: ObservableObject {
             Feedback.tick()
         case .chess:
             if chess.scroll(delta) { Feedback.tick() }
+        case .megaDrive:
+            break
         }
     }
 
@@ -308,6 +314,7 @@ final class IPodModel: ObservableObject {
             chess.select()
             return
         }
+        if case .megaDrive = current { return }
         if case .nowPlaying = current {
             Feedback.tick()
             let modes = NowPlayingMode.allCases
@@ -367,6 +374,9 @@ final class IPodModel: ObservableObject {
             }
         case .chess:
             chess.close()
+        case .megaDrive:
+            megaDrive?.stop()
+            megaDrive = nil
         default:
             break
         }
@@ -558,7 +568,46 @@ final class IPodModel: ObservableObject {
     }
 
     private func gamesMenu() -> [MenuItem] {
-        [MenuItem(title: "Satranç", action: .push("Satranç") { [unowned self] in self.chessMenu() })]
+        [
+            MenuItem(title: "Satranç", action: .push("Satranç") { [unowned self] in self.chessMenu() }),
+            MenuItem(title: "Mega Drive", action: .push("Mega Drive") { [unowned self] in self.megaDriveMenu() }),
+        ]
+    }
+
+    /// The ROMs in iPodOyun. One with a saved place asks whether to carry on or start over.
+    private func megaDriveMenu() -> [MenuItem] {
+        MegaDrive.games().map { rom in
+            let name = rom.deletingPathExtension().lastPathComponent
+            guard MegaDrive.hasSave(rom) else {
+                return MenuItem(title: name, action: .run { [unowned self] in self.openGame(rom) })
+            }
+            return MenuItem(title: name, action: .push(name) { [unowned self] in
+                [
+                    MenuItem(title: "Devam Et", action: .run { [unowned self] in self.openGame(rom) }),
+                    MenuItem(title: "Baştan Başla", action: .run { [unowned self] in
+                        MegaDrive.deleteSave(rom)
+                        self.openGame(rom)
+                    }),
+                ]
+            }, detail: "Kayıtlı")
+        }
+    }
+
+    private func openGame(_ rom: URL) {
+        guard let game = MegaDrive(rom: rom) else { return }
+        player.pause()
+        megaDrive = game
+        stack.append(.megaDrive)
+    }
+
+    /// A tap on the game's screen is Start, held for a few frames so the game sees it.
+    func pressStart() {
+        megaDrive?.start = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.megaDrive?.start = false }
+    }
+
+    func setPad(_ buttons: UInt32) {
+        megaDrive?.pad = buttons
     }
 
     private func chessMenu() -> [MenuItem] {

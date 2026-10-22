@@ -29,3 +29,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: NO
+        # Genesis Plus GX, built into build/lib by build.sh.
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridging.h
+        HEADER_SEARCH_PATHS: $(PROJECT_DIR)/build/genesis/libretro/libretro-common/include
+        LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/build/lib
+        OTHER_LDFLAGS: -lgenesis
