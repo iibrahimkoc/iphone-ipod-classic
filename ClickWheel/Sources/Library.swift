@@ -65,9 +65,18 @@ final class SongLibrary: ObservableObject {
     private var timer: Timer?
     private let service = NetService(domain: "local.", type: "_ipodmuzik._tcp.", name: UIDevice.current.name, port: 22)
 
+    private var observers: [NSObjectProtocol] = []
+
     init() {
         try? FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
         reload()
+        // A Finder sync changes the iOS music library underneath the app.
+        MPMediaLibrary.default().beginGeneratingLibraryChangeNotifications()
+        for name in [Notification.Name.MPMediaLibraryDidChange, UIApplication.didBecomeActiveNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.reload()
+            })
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.checkFolder() }
         // Lets the Mac find the phone by name on the same Wi-Fi.
         service.setTXTRecord(NetService.data(fromTXTRecord: ["folder": Data(Self.folder.path.utf8)]))
