@@ -34,10 +34,9 @@ struct CoverFlowView: View {
                     .animation(.spring(response: 0.32, dampingFraction: 0.86), value: index)
 
                     VStack(spacing: 2) {
-                        Text(albums[index].representativeItem?.albumTitle ?? "Bilinmeyen Albüm")
+                        Text(Library.albumName(albums[index].representativeItem))
                             .font(.system(size: geo.size.height * 0.07, weight: .bold))
-                        Text(albums[index].representativeItem?.albumArtist
-                             ?? albums[index].representativeItem?.artist ?? "")
+                        Text(Library.artistName(albums[index].representativeItem))
                             .font(.system(size: geo.size.height * 0.06))
                             .foregroundColor(Color(white: 0.7))
                     }

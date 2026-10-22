@@ -256,7 +256,7 @@ final class IPodModel: ObservableObject {
             guard albums.indices.contains(index) else { return }
             Feedback.tick()
             let album = albums[index]
-            stack.append(.list(ListScreen(title: album.representativeItem?.albumTitle ?? "Bilinmeyen Albüm",
+            stack.append(.list(ListScreen(title: Library.albumName(album.representativeItem),
                                           items: songsMenu(album.items))))
             return
         }
@@ -276,7 +276,7 @@ final class IPodModel: ObservableObject {
         case .clickVolume:
             stack.append(.clickVolume)
         case .coverFlow:
-            albums = MPMediaQuery.albums().collections ?? []
+            albums = Library.albums(of: MPMediaQuery.songs().items ?? [])
             stack.append(.coverFlow(0))
         case .live(let kind):
             stack.append(.live(kind, selection: 0, top: 0))
@@ -424,7 +424,9 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Cover Flow", action: .coverFlow),
             MenuItem(title: "Çalma Listeleri", action: .push("Çalma Listeleri") { [unowned self] in self.playlistsMenu() }),
             MenuItem(title: "Sanatçılar", action: .push("Sanatçılar") { [unowned self] in self.artistsMenu() }),
-            MenuItem(title: "Albümler", action: .push("Albümler") { [unowned self] in self.albumsMenu(MPMediaQuery.albums()) }),
+            MenuItem(title: "Albümler", action: .push("Albümler") { [unowned self] in
+                self.albumsMenu(Library.albums(of: MPMediaQuery.songs().items ?? []))
+            }),
             MenuItem(title: "Şarkılar", action: .push("Şarkılar") { [unowned self] in self.songsMenu(MPMediaQuery.songs().items ?? []) }),
         ]
     }
@@ -437,23 +439,18 @@ final class IPodModel: ObservableObject {
     }
 
     private func artistsMenu() -> [MenuItem] {
-        (MPMediaQuery.artists().collections ?? []).map { artist in
-            let name = artist.representativeItem?.artist ?? "Bilinmeyen Sanatçı"
-            let artistID = artist.representativeItem?.artistPersistentID ?? 0
+        Library.artists(of: MPMediaQuery.songs().items ?? []).map { artist in
+            let name = Library.artistName(artist.representativeItem)
             return MenuItem(title: name, action: .push(name) { [unowned self] in
-                let albums = MPMediaQuery.albums()
-                albums.addFilterPredicate(MPMediaPropertyPredicate(
-                    value: NSNumber(value: artistID),
-                    forProperty: MPMediaItemPropertyArtistPersistentID))
                 let all = MenuItem(title: "Tüm Şarkılar", action: .push(name) { [unowned self] in self.songsMenu(artist.items) })
-                return [all] + self.albumsMenu(albums)
+                return [all] + self.albumsMenu(Library.albums(of: artist.items))
             })
         }
     }
 
-    private func albumsMenu(_ query: MPMediaQuery) -> [MenuItem] {
-        (query.collections ?? []).map { album in
-            let name = album.representativeItem?.albumTitle ?? "Bilinmeyen Albüm"
+    private func albumsMenu(_ albums: [MPMediaItemCollection]) -> [MenuItem] {
+        albums.map { album in
+            let name = Library.albumName(album.representativeItem)
             return MenuItem(title: name, action: .push(name) { [unowned self] in self.songsMenu(album.items) })
         }
     }
@@ -672,5 +669,48 @@ enum Feedback {
             return nil
         }
         return url
+    }
+}
+
+/// Albums and artists grouped from songs. MPMediaQuery's own album and artist queries leave out
+/// songs with no album/artist tags; like the original iPod, those go under "Bilinmeyen …".
+enum Library {
+    static func albumName(_ item: MPMediaItem?) -> String {
+        nonEmpty(item?.albumTitle) ?? "Bilinmeyen Albüm"
+    }
+
+    static func artistName(_ item: MPMediaItem?) -> String {
+        nonEmpty(item?.albumArtist) ?? nonEmpty(item?.artist) ?? "Bilinmeyen Sanatçı"
+    }
+
+    static func albums(of songs: [MPMediaItem]) -> [MPMediaItemCollection] {
+        group(songs, key: { nonEmpty($0.albumTitle) == nil ? nil : "\($0.albumPersistentID)" }, sortedBy: albumName)
+    }
+
+    static func artists(of songs: [MPMediaItem]) -> [MPMediaItemCollection] {
+        group(songs, key: { (nonEmpty($0.albumArtist) ?? nonEmpty($0.artist))?.lowercased() }, sortedBy: artistName)
+    }
+
+    /// Groups songs by `key` (nil = unknown), sorted by name with the unknown group last.
+    private static func group(_ songs: [MPMediaItem], key: (MPMediaItem) -> String?,
+                              sortedBy name: (MPMediaItem?) -> String) -> [MPMediaItemCollection] {
+        var groups: [String: [MPMediaItem]] = [:]
+        var unknown: [MPMediaItem] = []
+        for song in songs {
+            if let key = key(song) {
+                groups[key, default: []].append(song)
+            } else {
+                unknown.append(song)
+            }
+        }
+        var collections = groups.values.map(MPMediaItemCollection.init(items:))
+            .sorted { name($0.representativeItem).localizedCompare(name($1.representativeItem)) == .orderedAscending }
+        if !unknown.isEmpty { collections.append(MPMediaItemCollection(items: unknown)) }
+        return collections
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let text = text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return nil }
+        return text
     }
 }
