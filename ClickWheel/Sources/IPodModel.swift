@@ -405,8 +405,14 @@ final class IPodModel: ObservableObject {
     }
 
     /// Holding the center on Now Playing opens the rating; the finger can slide onto the ring to rate.
+    /// On a photo it opens that photo's menu.
     func hold() -> Bool {
         if consumeWarning() { return true }
+        if case .photos(let index) = current, photos.assets.indices.contains(index) {
+            Feedback.tick()
+            stack.append(.list(ListScreen(title: "Fotoğraf", items: photoMenu(index))))
+            return true
+        }
         guard case .nowPlaying = current, player.item != nil else { return false }
         Feedback.tick()
         nowPlayingMode = .rating
@@ -746,6 +752,34 @@ final class IPodModel: ObservableObject {
         case .disliked?: return "✕"
         case nil: return nil
         }
+    }
+
+    private func photoMenu(_ index: Int) -> [MenuItem] {
+        let asset = photos.assets[index]
+        let favorite = MenuItem(title: asset.isFavorite ? "Sık Kullanılanlardan Çıkar" : "Sık Kullanılanlara Ekle",
+                                action: .run { [unowned self] in
+            self.photos.toggleFavorite(index)
+            self.menu()
+        })
+        let info = MenuItem(title: "Bilgi", action: .push("Bilgi") {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "d.MM.yyyy HH:mm"
+            return [
+                MenuItem(title: "Tarih", action: .run {}, detail: asset.creationDate.map(formatter.string(from:)) ?? "?"),
+                MenuItem(title: "Boyut", action: .run {}, detail: "\(asset.pixelWidth)×\(asset.pixelHeight)"),
+            ]
+        })
+        let delete = MenuItem(title: "Sil", action: .run { [unowned self] in
+            self.photos.delete(index) { [unowned self] deleted in
+                guard deleted else { return }
+                // Back on the photos, at the one that took its place (or the new last one).
+                self.menu()
+                if case .photos = self.current {
+                    self.stack[self.stack.count - 1] = .photos(min(index, max(self.photos.assets.count - 1, 0)))
+                }
+            }
+        })
+        return [favorite, info, delete]
     }
 
     private func playlistsMenu() -> [MenuItem] {

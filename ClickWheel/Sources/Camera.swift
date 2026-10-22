@@ -186,7 +186,8 @@ final class PhotoLibrary: ObservableObject {
     @Published private(set) var denied = false
     private let manager = PHCachingImageManager()
 
-    func load() {
+    /// Reloads the list; `done` runs on the main thread once it is in.
+    func load(done: (() -> Void)? = nil) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             let allowed = status == .authorized || status == .limited
             var assets: [PHAsset] = []
@@ -199,7 +200,30 @@ final class PhotoLibrary: ObservableObject {
                 self.denied = !allowed
                 self.assets = assets
                 self.shown = nil
-                self.shownIndex = 0
+                self.shownIndex = min(self.shownIndex ?? 0, max(assets.count - 1, 0))
+                done?()
+            }
+        }
+    }
+
+    // MARK: Actions (held center button)
+
+    func toggleFavorite(_ index: Int) {
+        guard assets.indices.contains(index) else { return }
+        let asset = assets[index], favorite = !asset.isFavorite
+        PHPhotoLibrary.shared().performChanges({ PHAssetChangeRequest(for: asset).isFavorite = favorite }) { saved, _ in
+            if saved { self.load() }
+        }
+    }
+
+    /// iOS asks for confirmation itself before the photo goes to Recently Deleted.
+    func delete(_ index: Int, done: @escaping (Bool) -> Void) {
+        guard assets.indices.contains(index) else { return done(false) }
+        let asset = assets[index]
+        PHPhotoLibrary.shared().performChanges({ PHAssetChangeRequest.deleteAssets([asset] as NSArray) }) { deleted, _ in
+            DispatchQueue.main.async {
+                guard deleted else { return done(false) }
+                self.load { done(true) }
             }
         }
     }
@@ -311,6 +335,15 @@ struct PhotoView: View {
                         Image(uiImage: image).resizable().scaledToFit()
                     }
                     VStack {
+                        if photos.assets.indices.contains(index), photos.assets[index].isFavorite {
+                            HStack {
+                                Spacer()
+                                Image(systemName: "heart.fill")
+                                    .font(.system(size: h * 0.07))
+                                    .foregroundColor(.white)
+                                    .shadow(radius: 2)
+                            }
+                        }
                         Spacer()
                         Text("\(index + 1) / \(photos.assets.count)")
                             .font(.system(size: h * 0.06, weight: .semibold))
