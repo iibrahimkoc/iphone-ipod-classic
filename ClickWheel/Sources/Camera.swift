@@ -17,6 +17,8 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     /// Goes up with every photo, for the white flash on screen.
     @Published private(set) var shots = 0
     @Published private(set) var message: String?
+    /// Width / height of the preview on screen; photos are cropped to it, so they hold what was seen.
+    var visibleAspect: CGFloat = 4 / 3
 
     /// Session work is slow, so it stays off the main thread.
     private let queue = DispatchQueue(label: "com.ibrahimkoc.clickwheel.camera")
@@ -124,10 +126,28 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         log.notice("photo done, error: \(String(describing: error), privacy: .public)")
-        guard error == nil, let data = photo.fileDataRepresentation() else {
+        guard error == nil, let full = photo.fileDataRepresentation().flatMap(UIImage.init(data:)),
+              let data = Self.crop(full, toAspect: visibleAspect).jpegData(compressionQuality: 0.92) else {
             return DispatchQueue.main.async { self.show("Çekilemedi") }
         }
         save(data)
+    }
+
+    /// The middle of `image` at the preview's aspect ratio, which is what the preview shows
+    /// (it fills the screen and cuts off the rest).
+    private static func crop(_ image: UIImage, toAspect aspect: CGFloat) -> UIImage {
+        let size = image.size
+        var crop = size
+        if size.width / size.height < aspect {
+            crop.height = (size.width / aspect).rounded()
+        } else {
+            crop.width = (size.height * aspect).rounded()
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: crop, format: format).image { _ in
+            image.draw(at: CGPoint(x: (crop.width - size.width) / 2, y: (crop.height - size.height) / 2))
+        }
     }
 
     private func save(_ data: Data) {
@@ -173,6 +193,7 @@ final class PhotoLibrary: ObservableObject {
                 self.denied = !allowed
                 self.assets = assets
                 self.shown = nil
+                self.shownIndex = 0
             }
         }
     }
@@ -182,10 +203,13 @@ final class PhotoLibrary: ObservableObject {
     @Published private(set) var image: UIImage?
     private var shown: Int?
     private var request: PHImageRequestID?
+    /// The index last asked for, kept when the list is reloaded.
+    private(set) var shownIndex: Int?
 
     func show(_ index: Int, size: CGSize) {
         guard index != shown || image == nil else { return }
         shown = index
+        shownIndex = index
         image = nil
         if let request = request { manager.cancelImageRequest(request) }
         guard assets.indices.contains(index) else { return }
@@ -225,6 +249,7 @@ struct CameraView: View {
                 .padding(6)
             }
             .clipped()
+            .onAppear { camera.visibleAspect = geo.size.width / geo.size.height }
         }
         .onChange(of: camera.shots) { _ in
             flash = true
@@ -291,13 +316,15 @@ struct PhotoView: View {
                     .padding(6)
                 }
             }
-            .onAppear { load(size: geo.size) }
-            .onChange(of: index) { _ in load(size: geo.size) }
-            .onChange(of: photos.assets.count) { _ in load(size: geo.size) }
+            // onChange's closure still sees the view from before the change, so the new index is
+            // passed in rather than read from `index`.
+            .onAppear { load(index, size: geo.size) }
+            .onChange(of: index) { new in load(new, size: geo.size) }
+            .onChange(of: photos.assets.count) { _ in load(photos.shownIndex ?? 0, size: geo.size) }
         }
     }
 
-    private func load(size: CGSize) {
+    private func load(_ index: Int, size: CGSize) {
         let scale = UIScreen.main.scale
         photos.show(index, size: CGSize(width: size.width * scale, height: size.height * scale))
     }
