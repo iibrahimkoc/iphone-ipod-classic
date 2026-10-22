@@ -108,6 +108,7 @@ final class IPodModel: ObservableObject {
     let airplane = AirplaneController()
     let battery = BatteryMonitor()
     let library = SongLibrary()
+    private(set) lazy var remote = RemoteControl(player: player, volume: volume)
     private(set) lazy var sleepTimer = SleepTimer { [unowned self] done in self.player.fadeOutAndPause(completion: done) }
     /// Albums for Cover Flow, loaded when it opens.
     private(set) var albums: [Album] = []
@@ -121,6 +122,7 @@ final class IPodModel: ObservableObject {
     init() {
         stack = [.list(mainMenu())]
         startClock()
+        _ = remote
         battery.onQuarantineChange = { [unowned self] on in on ? self.enterQuarantine() : self.leaveQuarantine() }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) {
             [unowned self] _ in
@@ -624,11 +626,20 @@ final class VolumeController: ObservableObject {
     @Published private(set) var level = AVAudioSession.sharedInstance().outputVolume
 
     func change(by delta: Float) {
+        set(currentLevel + delta)
+    }
+
+    func set(_ value: Float) {
         guard let slider = view.subviews.compactMap({ $0 as? UISlider }).first else { return }
-        let value = min(max(slider.value + delta, 0), 1)
+        let value = min(max(value, 0), 1)
         slider.value = value
         slider.sendActions(for: .valueChanged)
         level = value
+    }
+
+    /// The side buttons change the volume behind our back, so read the slider rather than `level`.
+    var currentLevel: Float {
+        view.subviews.compactMap { $0 as? UISlider }.first?.value ?? level
     }
 }
 

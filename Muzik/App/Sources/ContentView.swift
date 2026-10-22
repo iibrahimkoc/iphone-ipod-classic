@@ -23,7 +23,7 @@ struct Track: Identifiable {
 }
 
 struct ContentView: View {
-    @StateObject private var phone = Phone()
+    @EnvironmentObject private var phone: Phone
     @State private var tracks: [Track] = []
     @State private var dropTargeted = false
     @State private var uploading = false
