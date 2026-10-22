@@ -588,6 +588,8 @@ final class AudioRouteController: ObservableObject {
     }
 
     @Published private(set) var output = Output.speaker
+    /// Battery percent of the connected Bluetooth headphones (the lower earbud for AirPods).
+    @Published private(set) var headphoneBattery: Int?
     private var observer: NSObjectProtocol?
     private var timer: Timer?
     private var onHeadphonesLost: (() -> Void)?
@@ -618,6 +620,50 @@ final class AudioRouteController: ObservableObject {
         } else {
             output = .speaker
         }
+        headphoneBattery = output == .speaker ? nil : HeadphoneBattery.percent()
+    }
+}
+
+/// Reads accessory batteries from the private BatteryCenter framework, the source of the
+/// Batteries widget. AirPods report each earbud and the case as separate entries.
+enum HeadphoneBattery {
+    private static let controller: NSObject? = {
+        dlopen("/System/Library/PrivateFrameworks/BatteryCenter.framework/BatteryCenter", RTLD_NOW)
+        // Every call is checked first: a selector missing on this iOS version would crash the app.
+        guard let cls = NSClassFromString("BCBatteryDeviceController") as? NSObject.Type else { return nil }
+        let shared = NSSelectorFromString("sharedInstance")
+        if cls.responds(to: shared) { return cls.perform(shared)?.takeUnretainedValue() as? NSObject }
+        return cls.init()
+    }()
+
+    static func percent() -> Int? {
+        let connected = NSSelectorFromString("connectedDevices")
+        guard let controller = controller, controller.responds(to: connected),
+              let devices = controller.perform(connected)?
+                .takeUnretainedValue() as? [NSObject] else { return nil }
+        let entries = devices.filter { !bool($0, "isInternal") }.map { device in
+            // KVC would throw on a missing key, so the name is read only when it exists.
+            (name: device.responds(to: NSSelectorFromString("name")) ? device.value(forKey: "name") as? String ?? "" : "",
+             percent: integer(device, "percentCharge"),
+             charging: bool(device, "isCharging"))
+        }
+        // The case's level isn't what's playing, so the earbuds come first when they're listed.
+        let buds = entries.filter { !$0.name.localizedCaseInsensitiveContains("case") && !$0.charging }
+        return (buds.isEmpty ? entries : buds).map(\.percent).filter { $0 > 0 }.min()
+    }
+
+    private static func bool(_ object: NSObject, _ selector: String) -> Bool {
+        let sel = NSSelectorFromString(selector)
+        guard object.responds(to: sel) else { return false }
+        typealias Fn = @convention(c) (NSObject, Selector) -> Bool
+        return unsafeBitCast(object.method(for: sel), to: Fn.self)(object, sel)
+    }
+
+    private static func integer(_ object: NSObject, _ selector: String) -> Int {
+        let sel = NSSelectorFromString(selector)
+        guard object.responds(to: sel) else { return -1 }
+        typealias Fn = @convention(c) (NSObject, Selector) -> Int
+        return unsafeBitCast(object.method(for: sel), to: Fn.self)(object, sel)
     }
 }
 
