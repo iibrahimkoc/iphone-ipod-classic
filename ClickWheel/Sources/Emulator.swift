@@ -1,98 +1,207 @@
 import SwiftUI
 import AVFoundation
 
-/// Mega Drive (and Master System / Game Gear) games through Genesis Plus GX, a libretro core
-/// linked into the app (see build.sh). The ROMs are the files in `folder`. Leaving a game saves
-/// its state, so it carries on where it was left. libretro calls back into plain C functions, so
-/// they reach the one running game through `current`.
-final class MegaDrive: NSObject {
-    static let folder = URL(fileURLWithPath: "/var/mobile/Media/iPodOyun")
-    private static let extensions: Set<String> = ["md", "gen", "bin", "smd", "68k", "sgd", "sms", "gg"]
-    private static let folderPath = UnsafePointer(strdup(folder.path)!)
-    private static var current: MegaDrive?
+/// A system the app plays through a libretro core. The cores are bundled in the app's cores
+/// folder (see build.sh) and loaded when one of their games opens; each system has its own folder
+/// of games under iPodOyun.
+struct Console {
+    static let root = URL(fileURLWithPath: "/var/mobile/Media/iPodOyun")
 
-    /// The ROMs in the folder, by name.
-    static func games() -> [URL] {
+    static let megaDrive = Console(
+        name: "Mega Drive", core: "genesis_plus_gx_libretro_ios.dylib", folder: root.appendingPathComponent("MegaDrive"),
+        extensions: ["md", "gen", "bin", "smd", "68k", "sgd", "sms", "gg"],
+        center: RETRO_DEVICE_ID_JOYPAD_B, leftTap: RETRO_DEVICE_ID_JOYPAD_START, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
+        help: "Tekerlek: yön · Orta: zıpla\nEkrana dokun: Start · Uzun bas: çık")
+
+    /// PrBoom's classic layout: the D-pad walks and turns, X fires, A uses (doors, switches) and
+    /// Start is the menu, where A and X also confirm.
+    static let doom = Console(
+        name: "Doom", core: "prboom_libretro_ios.dylib", folder: root.appendingPathComponent("Doom"),
+        extensions: ["wad"],
+        titles: ["doom1.wad": "Doom: 1. Bölüm", "freedoom1.wad": "Freedoom: Phase 1", "freedoom2.wad": "Freedoom: Phase 2"],
+        center: RETRO_DEVICE_ID_JOYPAD_X, leftTap: RETRO_DEVICE_ID_JOYPAD_A, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
+        help: "Tekerlek: yürü, dön · Orta: ateş\nSol: kapı aç · Sağ: menü · Uzun bas: çık")
+
+    let name: String
+    let core: String
+    let folder: URL
+    let extensions: Set<String>
+    /// Menu names for known files.
+    var titles: [String: String] = [:]
+    /// What the wheel's center and a tap on the left or right half of the screen press.
+    let center: Int32
+    let leftTap: Int32
+    let rightTap: Int32
+    let help: String
+
+    /// The games in the folder, by name. prboom.wad is the engine's own data, not a game.
+    func games() -> [URL] {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return urls.filter { extensions.contains($0.pathExtension.lowercased()) }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        return urls.filter { extensions.contains($0.pathExtension.lowercased()) && $0.lastPathComponent.lowercased() != "prboom.wad" }
+            .sorted { title($0).localizedStandardCompare(title($1)) == .orderedAscending }
     }
 
-    static func hasSave(_ rom: URL) -> Bool {
-        FileManager.default.fileExists(atPath: stateFile(rom).path)
+    func title(_ game: URL) -> String {
+        titles[game.lastPathComponent.lowercased()] ?? game.deletingPathExtension().lastPathComponent
     }
 
-    static func deleteSave(_ rom: URL) {
-        try? FileManager.default.removeItem(at: stateFile(rom))
+    func hasSave(_ game: URL) -> Bool {
+        FileManager.default.fileExists(atPath: stateFile(game).path)
     }
 
-    private static func stateFile(_ rom: URL) -> URL {
-        folder.appendingPathComponent("." + rom.deletingPathExtension().lastPathComponent + ".state")
+    func deleteSave(_ game: URL) {
+        try? FileManager.default.removeItem(at: stateFile(game))
     }
 
-    private static func sramFile(_ rom: URL) -> URL {
-        folder.appendingPathComponent("." + rom.deletingPathExtension().lastPathComponent + ".srm")
+    func stateFile(_ game: URL) -> URL {
+        folder.appendingPathComponent("." + game.deletingPathExtension().lastPathComponent + ".state")
     }
 
-    /// Held buttons as a bit per RETRO_DEVICE_ID_JOYPAD_* id: the wheel's, and Start from the screen.
+    func sramFile(_ game: URL) -> URL {
+        folder.appendingPathComponent("." + game.deletingPathExtension().lastPathComponent + ".srm")
+    }
+}
+
+/// The libretro functions of a core opened with dlopen.
+private struct Core {
+    let handle: UnsafeMutableRawPointer
+    let setEnvironment: @convention(c) (retro_environment_t?) -> Void
+    let setVideoRefresh: @convention(c) (retro_video_refresh_t?) -> Void
+    let setAudioSample: @convention(c) (retro_audio_sample_t?) -> Void
+    let setAudioSampleBatch: @convention(c) (retro_audio_sample_batch_t?) -> Void
+    let setInputPoll: @convention(c) (retro_input_poll_t?) -> Void
+    let setInputState: @convention(c) (retro_input_state_t?) -> Void
+    let initialize: @convention(c) () -> Void
+    let deinitialize: @convention(c) () -> Void
+    let loadGame: @convention(c) (UnsafePointer<retro_game_info>?) -> Bool
+    let unloadGame: @convention(c) () -> Void
+    let avInfo: @convention(c) (UnsafeMutablePointer<retro_system_av_info>?) -> Void
+    let run: @convention(c) () -> Void
+    let serializeSize: @convention(c) () -> Int
+    let serialize: @convention(c) (UnsafeMutableRawPointer?, Int) -> Bool
+    let unserialize: @convention(c) (UnsafeRawPointer?, Int) -> Bool
+    let memoryData: @convention(c) (UInt32) -> UnsafeMutableRawPointer?
+    let memorySize: @convention(c) (UInt32) -> Int
+
+    init?(path: String) {
+        guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else { return nil }
+        func symbol<T>(_ name: String) -> T? {
+            dlsym(handle, name).map { unsafeBitCast($0, to: T.self) }
+        }
+        guard let setEnvironment: @convention(c) (retro_environment_t?) -> Void = symbol("retro_set_environment"),
+              let setVideoRefresh: @convention(c) (retro_video_refresh_t?) -> Void = symbol("retro_set_video_refresh"),
+              let setAudioSample: @convention(c) (retro_audio_sample_t?) -> Void = symbol("retro_set_audio_sample"),
+              let setAudioSampleBatch: @convention(c) (retro_audio_sample_batch_t?) -> Void = symbol("retro_set_audio_sample_batch"),
+              let setInputPoll: @convention(c) (retro_input_poll_t?) -> Void = symbol("retro_set_input_poll"),
+              let setInputState: @convention(c) (retro_input_state_t?) -> Void = symbol("retro_set_input_state"),
+              let initialize: @convention(c) () -> Void = symbol("retro_init"),
+              let deinitialize: @convention(c) () -> Void = symbol("retro_deinit"),
+              let loadGame: @convention(c) (UnsafePointer<retro_game_info>?) -> Bool = symbol("retro_load_game"),
+              let unloadGame: @convention(c) () -> Void = symbol("retro_unload_game"),
+              let avInfo: @convention(c) (UnsafeMutablePointer<retro_system_av_info>?) -> Void = symbol("retro_get_system_av_info"),
+              let run: @convention(c) () -> Void = symbol("retro_run"),
+              let serializeSize: @convention(c) () -> Int = symbol("retro_serialize_size"),
+              let serialize: @convention(c) (UnsafeMutableRawPointer?, Int) -> Bool = symbol("retro_serialize"),
+              let unserialize: @convention(c) (UnsafeRawPointer?, Int) -> Bool = symbol("retro_unserialize"),
+              let memoryData: @convention(c) (UInt32) -> UnsafeMutableRawPointer? = symbol("retro_get_memory_data"),
+              let memorySize: @convention(c) (UInt32) -> Int = symbol("retro_get_memory_size")
+        else {
+            dlclose(handle)
+            return nil
+        }
+        self.handle = handle
+        self.setEnvironment = setEnvironment
+        self.setVideoRefresh = setVideoRefresh
+        self.setAudioSample = setAudioSample
+        self.setAudioSampleBatch = setAudioSampleBatch
+        self.setInputPoll = setInputPoll
+        self.setInputState = setInputState
+        self.initialize = initialize
+        self.deinitialize = deinitialize
+        self.loadGame = loadGame
+        self.unloadGame = unloadGame
+        self.avInfo = avInfo
+        self.run = run
+        self.serializeSize = serializeSize
+        self.serialize = serialize
+        self.unserialize = unserialize
+        self.memoryData = memoryData
+        self.memorySize = memorySize
+    }
+}
+
+/// A game running on its console's core. Leaving it saves its state, so it carries on where it
+/// was left. libretro calls back into plain C functions, so they reach the one running game
+/// through `current`.
+final class Emulator: NSObject {
+    private static var current: Emulator?
+    /// The system and save directory handed to the core: the console's folder.
+    private static var directory: UnsafeMutablePointer<CChar>?
+
+    /// Held buttons as a bit per RETRO_DEVICE_ID_JOYPAD_* id: the wheel's, and the screen taps'.
     var pad: UInt32 = 0
-    var start = false
+    var tapped: UInt32 = 0
     /// The picture; its layer gets each frame.
     let view = UIView()
+    let console: Console
     let title: String
-    private let rom: URL
+    private let game: URL
+    private let core: Core
     private var pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555.rawValue
     private var pixels: [UInt32] = []
     private var link: CADisplayLink?
     private let audio = AudioOutput()
     private var resignObserver: NSObjectProtocol?
 
-    init?(rom: URL) {
-        guard Self.current == nil else { return nil }
-        self.rom = rom
-        title = rom.deletingPathExtension().lastPathComponent
+    init?(console: Console, game: URL) {
+        guard Self.current == nil, let core = Core(path: Bundle.main.bundlePath + "/cores/" + console.core) else { return nil }
+        self.console = console
+        self.game = game
+        self.core = core
+        title = console.title(game)
         super.init()
         Self.current = self
+        free(Self.directory)
+        Self.directory = strdup(console.folder.path)
 
-        retro_set_environment { command, data in MegaDrive.environment(command, data) }
-        retro_set_video_refresh { data, width, height, pitch in
-            MegaDrive.current?.show(data, width: Int(width), height: Int(height), pitch: pitch)
+        core.setEnvironment { command, data in Emulator.environment(command, data) }
+        core.setVideoRefresh { data, width, height, pitch in
+            Emulator.current?.show(data, width: Int(width), height: Int(height), pitch: pitch)
         }
-        retro_set_audio_sample { left, right in
+        core.setAudioSample { left, right in
             var frame = [left, right]
-            MegaDrive.current?.audio.push(&frame, frames: 1)
+            Emulator.current?.audio.push(&frame, frames: 1)
         }
-        retro_set_audio_sample_batch { data, frames in
-            if let data = data { MegaDrive.current?.audio.push(data, frames: frames) }
+        core.setAudioSampleBatch { data, frames in
+            if let data = data { Emulator.current?.audio.push(data, frames: frames) }
             return frames
         }
-        retro_set_input_poll {}
-        retro_set_input_state { port, device, _, id in
-            guard port == 0, device == UInt32(RETRO_DEVICE_JOYPAD), let game = MegaDrive.current, id < 32 else { return 0 }
-            var buttons = game.pad
-            if game.start { buttons |= 1 << UInt32(RETRO_DEVICE_ID_JOYPAD_START) }
-            return buttons & (1 << id) != 0 ? 1 : 0
+        core.setInputPoll {}
+        core.setInputState { port, device, _, id in
+            guard port == 0, device == UInt32(RETRO_DEVICE_JOYPAD), let game = Emulator.current, id < 32 else { return 0 }
+            return (game.pad | game.tapped) & (1 << id) != 0 ? 1 : 0
         }
-        retro_init()
-        let loaded = rom.path.withCString { path -> Bool in
+        core.initialize()
+        let loaded = game.path.withCString { path -> Bool in
             var info = retro_game_info(path: path, data: nil, size: 0, meta: nil)
-            return retro_load_game(&info)
+            return core.loadGame(&info)
         }
         guard loaded else {
-            retro_deinit()
+            core.deinitialize()
+            dlclose(core.handle)
             Self.current = nil
             return nil
         }
         var av = retro_system_av_info()
-        retro_get_system_av_info(&av)
+        core.avInfo(&av)
         loadSaves()
 
         view.backgroundColor = .black
-        // Taps go through to the screen's SwiftUI gestures (Start, long press to leave).
-        view.isUserInteractionEnabled = false
         view.layer.contentsGravity = .resizeAspect
         view.layer.magnificationFilter = .nearest
+        // Taps go through to the screen's SwiftUI gestures (the buttons, long press to leave).
+        view.isUserInteractionEnabled = false
         audio.start(rate: av.timing.sample_rate)
         let link = CADisplayLink(target: self, selector: #selector(frame))
         link.preferredFramesPerSecond = 60
@@ -109,39 +218,40 @@ final class MegaDrive: NSObject {
         if let observer = resignObserver { NotificationCenter.default.removeObserver(observer) }
         save()
         audio.stop()
-        retro_unload_game()
-        retro_deinit()
+        core.unloadGame()
+        core.deinitialize()
+        dlclose(core.handle)
         Self.current = nil
     }
 
     @objc private func frame() {
-        retro_run()
+        core.run()
     }
 
     // MARK: Saves
 
     private func save() {
-        let size = retro_serialize_size()
+        let size = core.serializeSize()
         if size > 0 {
             var state = Data(count: size)
-            let saved = state.withUnsafeMutableBytes { retro_serialize($0.baseAddress, size) }
-            if saved { try? state.write(to: Self.stateFile(rom), options: .atomic) }
+            let saved = state.withUnsafeMutableBytes { core.serialize($0.baseAddress, size) }
+            if saved { try? state.write(to: console.stateFile(game), options: .atomic) }
         }
         // Battery-backed saves too, in case the state file is ever lost.
-        let sramSize = retro_get_memory_size(UInt32(RETRO_MEMORY_SAVE_RAM))
-        if sramSize > 0, let sram = retro_get_memory_data(UInt32(RETRO_MEMORY_SAVE_RAM)) {
-            try? Data(bytes: sram, count: sramSize).write(to: Self.sramFile(rom), options: .atomic)
+        let sramSize = core.memorySize(UInt32(RETRO_MEMORY_SAVE_RAM))
+        if sramSize > 0, let sram = core.memoryData(UInt32(RETRO_MEMORY_SAVE_RAM)) {
+            try? Data(bytes: sram, count: sramSize).write(to: console.sramFile(game), options: .atomic)
         }
     }
 
     private func loadSaves() {
-        let sramSize = retro_get_memory_size(UInt32(RETRO_MEMORY_SAVE_RAM))
-        if sramSize > 0, let sram = retro_get_memory_data(UInt32(RETRO_MEMORY_SAVE_RAM)),
-           let saved = try? Data(contentsOf: Self.sramFile(rom)) {
+        let sramSize = core.memorySize(UInt32(RETRO_MEMORY_SAVE_RAM))
+        if sramSize > 0, let sram = core.memoryData(UInt32(RETRO_MEMORY_SAVE_RAM)),
+           let saved = try? Data(contentsOf: console.sramFile(game)) {
             saved.copyBytes(to: sram.assumingMemoryBound(to: UInt8.self), count: min(saved.count, sramSize))
         }
-        if let state = try? Data(contentsOf: Self.stateFile(rom)) {
-            _ = state.withUnsafeBytes { retro_unserialize($0.baseAddress, state.count) }
+        if let state = try? Data(contentsOf: console.stateFile(game)) {
+            _ = state.withUnsafeBytes { core.unserialize($0.baseAddress, state.count) }
         }
     }
 
@@ -154,7 +264,7 @@ final class MegaDrive: NSObject {
             current?.pixelFormat = format
             return true
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
-            data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self).pointee = folderPath
+            data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self).pointee = UnsafePointer(directory)
             return true
         case RETRO_ENVIRONMENT_GET_CAN_DUPE:
             data?.assumingMemoryBound(to: Bool.self).pointee = true
@@ -264,23 +374,26 @@ private final class AudioOutput {
 }
 
 /// While a game runs the click wheel is its gamepad: where a finger is on the ring is the D-pad
-/// (eight directions) and the center is B, the jump button. Several fingers work at once, so
-/// running and jumping go together.
+/// (eight directions) and the center is the console's main button (jump, fire). Several fingers
+/// work at once, so running and jumping go together.
 struct GamepadOverlay: UIViewRepresentable {
+    let center: Int32
     let onChange: (UInt32) -> Void
 
     func makeUIView(context: Context) -> GamepadView {
         let view = GamepadView()
-        view.onChange = onChange
+        updateUIView(view, context: context)
         return view
     }
 
     func updateUIView(_ view: GamepadView, context: Context) {
+        view.centerButton = center
         view.onChange = onChange
     }
 }
 
 final class GamepadView: UIView {
+    var centerButton = RETRO_DEVICE_ID_JOYPAD_B
     var onChange: ((UInt32) -> Void)?
 
     override init(frame: CGRect) {
@@ -306,7 +419,7 @@ final class GamepadView: UIView {
             let dx = Double(point.x - center.x), dy = Double(point.y - center.y)
             let distance = hypot(dx, dy)
             if distance < Double(size) * 0.19 {
-                press(RETRO_DEVICE_ID_JOYPAD_B)
+                press(centerButton)
                 continue
             }
             // Eight 45° sectors, starting with right and going clockwise (screen y grows downward).
@@ -326,27 +439,42 @@ final class GamepadView: UIView {
     }
 }
 
-/// The game's picture, with the controls shown for a few seconds when it opens.
+/// The game's picture, with the controls shown for a few seconds when it opens. A tap on the
+/// left or right half presses that side's button; a long press anywhere leaves.
 struct GameScreen: View {
-    let game: MegaDrive
+    let game: Emulator
+    let onTap: (_ left: Bool) -> Void
+    let onLeave: () -> Void
     @State private var showsHelp = true
 
     var body: some View {
         GameLayer(view: game.view)
+            .overlay(HStack(spacing: 0) {
+                half(left: true)
+                half(left: false)
+            })
             .overlay(Group {
                 if showsHelp {
-                    Text("Tekerlek: yön · Orta: zıpla\nEkrana dokun: Start · Uzun bas: çık")
+                    Text(game.console.help)
                         .font(.system(size: 12, weight: .semibold))
                         .multilineTextAlignment(.center)
                         .foregroundColor(.white)
                         .padding(8)
                         .background(Color.black.opacity(0.7))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .allowsHitTesting(false)
                 }
             })
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4) { showsHelp = false }
             }
+    }
+
+    private func half(left: Bool) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture { onTap(left) }
+            .onLongPressGesture(minimumDuration: 0.8, perform: onLeave)
     }
 }
 

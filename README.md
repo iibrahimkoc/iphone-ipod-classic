@@ -53,6 +53,10 @@ It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and
 **Oyunlar › Satranç** plays against Stockfish 19 (GPL-3.0, github.com/official-stockfish/Stockfish). `build.sh`
 builds it for iOS on the first run and bundles it as a separate executable that the app drives over UCI.
 
-**Oyunlar › Mega Drive** runs Mega Drive / Master System / Game Gear ROMs from `/var/mobile/Media/iPodOyun` through
-Genesis Plus GX (non-commercial license, github.com/libretro/Genesis-Plus-GX), linked in as a libretro core. The
-wheel is the D-pad and the center is B; tapping the screen is Start and a long press leaves, saving the game's place.
+**Oyunlar › Mega Drive** and **Oyunlar › Doom** run games through libretro cores that `build.sh` builds for iOS
+and bundles in the app's `cores` folder, opened with dlopen: Genesis Plus GX (non-commercial license,
+github.com/libretro/Genesis-Plus-GX) for Mega Drive / Master System / Game Gear ROMs in
+`/var/mobile/Media/iPodOyun/MegaDrive`, and PrBoom (GPL, github.com/libretro/libretro-prboom) for the WADs in
+`/var/mobile/Media/iPodOyun/Doom` (the Doom shareware episode, Freedoom Phase 1 and 2, plus PrBoom's own
+`prboom.wad`). While a game runs the wheel is the D-pad and the center the main button; a tap on the screen's left
+or right half presses that side's button, and a long press leaves, saving the game's place.

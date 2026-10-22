@@ -4,16 +4,19 @@
 set -e
 cd "$(dirname "$0")"
 
-# Genesis Plus GX for Oyunlar › Mega Drive: a static libretro core the app links (see project.yml).
-GPGX=build/genesis
-if [ ! -f build/lib/libgenesis.a ]; then
-    [ -d "$GPGX" ] || git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX.git "$GPGX"
-    # The regular (dylib) build, since STATIC_LINKING leaves out the libretro-common file and
-    # path helpers it expects a frontend to have; its objects are then archived for linking.
-    make -C "$GPGX" -f Makefile.libretro -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 \
-        IOSSDK="$(xcrun -sdk iphoneos --show-sdk-path)" >/dev/null
-    mkdir -p build/lib
-    find "$GPGX" -name '*.o' -print0 | xargs -0 ar rcs build/lib/libgenesis.a
+# libretro cores for Oyunlar, built once for iOS: Genesis Plus GX (Mega Drive) and PrBoom (Doom).
+# They are bundled in the app's cores folder and opened with dlopen; both export the same retro_*
+# functions, so they can't be linked in. The Genesis checkout also provides libretro.h.
+IOSSDK="$(xcrun -sdk iphoneos --show-sdk-path)"
+GPGX=build/genesis/genesis_plus_gx_libretro_ios.dylib
+if [ ! -f "$GPGX" ]; then
+    [ -d build/genesis ] || git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX.git build/genesis
+    make -C build/genesis -f Makefile.libretro -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 IOSSDK="$IOSSDK" >/dev/null
+fi
+PRBOOM=build/prboom/prboom_libretro_ios.dylib
+if [ ! -f "$PRBOOM" ]; then
+    [ -d build/prboom ] || git clone -q --depth 1 https://github.com/libretro/libretro-prboom.git build/prboom
+    make -C build/prboom -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 IOSSDK="$IOSSDK" >/dev/null
 fi
 
 xcodegen generate --quiet
@@ -37,6 +40,12 @@ cp "$SF/src/stockfish" "$APP/stockfish"
 strip "$APP/stockfish"
 ldid -S"$PWD/stockfish.entitlements" "$APP/stockfish"
 
+mkdir -p "$APP/cores"
+for CORE in "$GPGX" "$PRBOOM"; do
+    cp "$CORE" "$APP/cores/"
+    ldid -S "$APP/cores/$(basename "$CORE")"
+done
+
 PKG=build/deb
 rm -rf "$PKG"
 mkdir -p "$PKG/DEBIAN" "$PKG/var/jb/Applications"
@@ -44,7 +53,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 2.10.2
+Version: 2.11.0
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc
