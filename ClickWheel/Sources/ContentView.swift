@@ -363,8 +363,10 @@ struct NowPlayingView: View {
                         }
                         .frame(height: h * 0.1)
                     case .rating:
+                        // The marks differ in width, so each gets the same box and the bar doesn't shift.
                         picker("Beğeni", options: ["✕", "—", "♥"],
-                               selected: [Ratings.Rating.disliked, nil, .liked].firstIndex { $0 == ratings.rating(of: item) }!, h: h)
+                               selected: [Ratings.Rating.disliked, nil, .liked].firstIndex { $0 == ratings.rating(of: item) }!, h: h,
+                               optionWidth: h * 0.1)
                     case .shuffle:
                         picker("Karıştır", options: ["Kapalı", "Şarkılar"], selected: player.shuffle ? 1 : 0, h: h)
                     case .repeatMode:
@@ -384,13 +386,14 @@ struct NowPlayingView: View {
     }
 
     /// "Karıştır  [Kapalı] Şarkılar": the wheel moves the highlight.
-    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat) -> some View {
+    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat, optionWidth: CGFloat? = nil) -> some View {
         HStack(spacing: 4) {
             Text(title).font(.system(size: h * 0.065, weight: .bold))
             Spacer()
             ForEach(options.indices, id: \.self) { index in
                 Text(options[index])
                     .font(.system(size: h * 0.06, weight: .semibold))
+                    .frame(width: optionWidth)
                     .foregroundColor(index == selected ? .white : .black)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
