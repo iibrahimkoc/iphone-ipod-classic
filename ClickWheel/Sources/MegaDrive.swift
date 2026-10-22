@@ -89,6 +89,8 @@ final class MegaDrive: NSObject {
         loadSaves()
 
         view.backgroundColor = .black
+        // Taps go through to the screen's SwiftUI gestures (Start, long press to leave).
+        view.isUserInteractionEnabled = false
         view.layer.contentsGravity = .resizeAspect
         view.layer.magnificationFilter = .nearest
         audio.start(rate: av.timing.sample_rate)
