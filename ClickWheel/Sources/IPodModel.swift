@@ -126,7 +126,7 @@ final class IPodModel: ObservableObject {
         battery.onQuarantineChange = { [unowned self] on in on ? self.enterQuarantine() : self.leaveQuarantine() }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) {
             [unowned self] _ in
-            if self.battery.quarantine { self.scheduleLock() }
+            if self.battery.quarantine { self.scheduleLock() } else { Brightness.set(self.brightness) }
         }
     }
 
@@ -152,7 +152,7 @@ final class IPodModel: ObservableObject {
         preQuarantine = (airplane.enabled, UIScreen.main.brightness)
         player.pause()
         airplane.setEnabled(true)
-        UIScreen.main.brightness = 0.05
+        Brightness.set(0.05)
         scheduleLock()
     }
 
@@ -161,8 +161,8 @@ final class IPodModel: ObservableObject {
         guard let saved = preQuarantine else { return }
         preQuarantine = nil
         if !saved.airplane { airplane.setEnabled(false) }
-        UIScreen.main.brightness = saved.brightness
         brightness = Double(saved.brightness)
+        Brightness.set(brightness)
     }
 
     /// Asks the kiosk tweak to turn the screen off a few seconds after it was woken.
@@ -369,7 +369,7 @@ final class IPodModel: ObservableObject {
 
     func adjustBrightness(by delta: Double) {
         brightness = min(max(brightness + delta, 0), 1)
-        UIScreen.main.brightness = CGFloat(brightness)
+        Brightness.set(brightness)
         show(.brightness)
     }
 
@@ -703,5 +703,21 @@ enum Feedback {
             return nil
         }
         return url
+    }
+}
+
+/// The system brightness, as Control Center sets it. UIScreen.brightness alone is only an override
+/// that iOS drops when the screen turns off, so the level would jump back after a lock.
+enum Brightness {
+    private typealias SetFn = @convention(c) (Float, Int32) -> Void
+    private static let setSystem: SetFn? = {
+        let lib = dlopen("/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices", RTLD_NOW)
+        guard let lib = lib, let pointer = dlsym(lib, "BKSDisplayBrightnessSet") else { return nil }
+        return unsafeBitCast(pointer, to: SetFn.self)
+    }()
+
+    static func set(_ level: Double) {
+        setSystem?(Float(level), 1)
+        UIScreen.main.brightness = CGFloat(level)
     }
 }
