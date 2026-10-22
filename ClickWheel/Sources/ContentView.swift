@@ -48,7 +48,7 @@ private struct VolumeViewHost: UIViewRepresentable {
 
 // MARK: - Screen
 
-private let highlight = LinearGradient(
+let highlight = LinearGradient(
     colors: [Color(red: 0.45, green: 0.68, blue: 0.96), Color(red: 0.12, green: 0.40, blue: 0.86)],
     startPoint: .top, endPoint: .bottom)
 
@@ -107,6 +107,8 @@ struct ScreenView: View {
                             ClickVolumeView(level: model.clickVolume)
                         case .coverFlow(let index):
                             CoverFlowView(albums: model.albums, index: index)
+                        case .chess:
+                            ChessView(game: model.chess)
                         }
                     }
                 }

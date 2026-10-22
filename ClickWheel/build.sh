@@ -12,6 +12,19 @@ xcodebuild -project ClickWheel.xcodeproj -scheme ClickWheel -sdk iphoneos \
 APP=build/Build/Products/Release-iphoneos/ClickWheel.app
 ldid -S"$PWD/entitlements.plist" "$APP/ClickWheel"
 
+# Stockfish for Oyunlar › Satranç: built once for iOS from the release tag (the network is
+# embedded, ~100 MB) and bundled next to the app's executable. It needs its own entitlements,
+# or iOS kills it at launch.
+SF=build/stockfish
+if [ ! -x "$SF/src/stockfish" ]; then
+    [ -d "$SF" ] || git clone -q --depth 1 --branch sf_19 https://github.com/official-stockfish/Stockfish.git "$SF"
+    make -C "$SF/src" -j"$(sysctl -n hw.ncpu)" build ARCH=armv8 COMP=clang CXX="xcrun -sdk iphoneos clang++" \
+        mac_target_flags="-target arm64-apple-ios15.0" >/dev/null
+fi
+cp "$SF/src/stockfish" "$APP/stockfish"
+strip "$APP/stockfish"
+ldid -S"$PWD/stockfish.entitlements" "$APP/stockfish"
+
 PKG=build/deb
 rm -rf "$PKG"
 mkdir -p "$PKG/DEBIAN" "$PKG/var/jb/Applications"
@@ -19,7 +32,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 2.8.3
+Version: 2.9.0
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc

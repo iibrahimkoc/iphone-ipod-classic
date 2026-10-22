@@ -73,6 +73,7 @@ enum Screen {
     /// Rebuilt from live state on every render, so only the position is stored.
     case live(LiveList, selection: Int, top: Int)
     case password(PasswordEntry)
+    case chess
 }
 
 /// What the bar at the bottom of Now Playing shows; the center button cycles through them,
@@ -108,6 +109,7 @@ final class IPodModel: ObservableObject {
     let airplane = AirplaneController()
     let battery = BatteryMonitor()
     let library = SongLibrary()
+    let chess = ChessGame()
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
     private(set) lazy var sleepTimer = SleepTimer { [unowned self] done in self.player.fadeOutAndPause(completion: done) }
     /// Albums for Cover Flow, loaded when it opens.
@@ -186,6 +188,7 @@ final class IPodModel: ObservableObject {
         case .coverFlow: return "Cover Flow"
         case .live(let kind, _, _): return kind.title
         case .password: return "Şifre"
+        case .chess: return "Satranç"
         }
     }
 
@@ -278,6 +281,8 @@ final class IPodModel: ObservableObject {
             entry.index = ((entry.index + delta) % count + count) % count
             stack[stack.count - 1] = .password(entry)
             Feedback.tick()
+        case .chess:
+            if chess.scroll(delta) { Feedback.tick() }
         }
     }
 
@@ -296,6 +301,11 @@ final class IPodModel: ObservableObject {
                 entry.text += character
             }
             stack[stack.count - 1] = .password(entry)
+            return
+        }
+        if case .chess = current {
+            Feedback.tick()
+            chess.select()
             return
         }
         if case .nowPlaying = current {
@@ -345,13 +355,20 @@ final class IPodModel: ObservableObject {
     func menu() {
         if consumeWarning() { return }
         Feedback.tick()
+        // A picked-up chess piece goes back first.
+        if case .chess = current, chess.back() { return }
         guard stack.count > 1 else { return }
-        if case .live(let kind, _, _) = stack.removeLast() {
+        switch stack.removeLast() {
+        case .live(let kind, _, _):
             switch kind {
             case .settings, .battery: break
             case .bluetooth: bluetooth.stopScanning()
             case .wifi: wifi.stopScanning()
             }
+        case .chess:
+            chess.close()
+        default:
+            break
         }
     }
 
@@ -388,6 +405,7 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Müzik", action: .push("Müzik") { [unowned self] in self.musicMenu() }),
             MenuItem(title: "Şarkıları Karıştır", action: .shuffleAll),
             MenuItem(title: "Şimdi Çalıyor", action: .nowPlaying),
+            MenuItem(title: "Oyunlar", action: .push("Oyunlar") { [unowned self] in self.gamesMenu() }),
             MenuItem(title: "Ayarlar", action: .live(.settings)),
         ])
     }
@@ -537,6 +555,30 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Unut: \(device.name)", action: .run { [unowned self] in self.bluetooth.forget(device) })
         }
         return [power] + devices + forget
+    }
+
+    private func gamesMenu() -> [MenuItem] {
+        [MenuItem(title: "Satranç", action: .push("Satranç") { [unowned self] in self.chessMenu() })]
+    }
+
+    private func chessMenu() -> [MenuItem] {
+        var items: [MenuItem] = []
+        if chess.canResume {
+            items.append(MenuItem(title: "Devam Et", action: .run { [unowned self] in self.openChess() },
+                                  detail: chess.level.title))
+        }
+        items.append(MenuItem(title: "Yeni Oyun", action: .push("Yeni Oyun") { [unowned self] in
+            ChessGame.Level.allCases.map { level in
+                MenuItem(title: level.title, action: .run { [unowned self] in self.openChess(level) })
+            }
+        }))
+        return items
+    }
+
+    /// Starts a new game at `level`, or carries on with the saved one.
+    private func openChess(_ level: ChessGame.Level? = nil) {
+        if let level = level { chess.start(level) } else { chess.open() }
+        stack.append(.chess)
     }
 
     private func musicMenu() -> [MenuItem] {
