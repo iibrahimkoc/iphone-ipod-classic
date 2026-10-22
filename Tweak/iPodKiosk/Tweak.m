@@ -3,6 +3,7 @@
 //  - The home button returns to the app instead of the home screen; double/triple/long presses are ignored.
 //  - Control Center, Notification Center and other system gestures are disabled while unlocked.
 //  - Waking the screen skips the lock screen (only possible when the phone has no passcode).
+//  - The "no SIM card" alert and iOS's own low battery alert are suppressed (the app shows its own).
 //  - The app can turn the screen off (battery quarantine) by posting com.ibrahimkoc.ipod.lock.
 //  - Escape hatch: 5 quick home presses unlocks everything until the iPod app is reopened or the phone locks.
 #import <UIKit/UIKit.h>
@@ -87,6 +88,19 @@ static void swallow(NSString *className, NSString *selector) {
     });
 }
 
+// Alerts an iPod doesn't need: iOS's low battery alert (the app has its own warning) and SIM
+// alerts, which the phone service sends as user notifications whenever the cellular radio starts.
+static BOOL isSuppressedAlert(id item) {
+    if ([NSStringFromClass([item class]) isEqualToString:@"SBLowPowerAlertItem"]) return YES;
+    for (NSString *key in @[@"alertHeader", @"alertMessage", @"title", @"message"]) {
+        SEL selector = NSSelectorFromString(key);
+        if (![item respondsToSelector:selector]) continue;
+        id text = SEND(id)(item, selector);
+        if ([text isKindOfClass:NSString.class] && [text containsString:@"SIM"]) return YES;
+    }
+    return NO;
+}
+
 __attribute__((constructor)) static void init(void) {
     presses = [NSMutableArray array];
 
@@ -142,6 +156,18 @@ __attribute__((constructor)) static void init(void) {
     __block IMP controlCenterGesture = hook(@"SBControlCenterController", @"_shouldAllowControlCenterGesture", ^BOOL(id self) {
         if (kioskActive()) return NO;
         return ((BOOL (*)(id, SEL))controlCenterGesture)(self, @selector(_shouldAllowControlCenterGesture));
+    });
+
+    // MARK: Alerts
+
+    __block IMP activateAlert = hook(@"SBAlertItemsController", @"activateAlertItem:", ^(id self, id item) {
+        if (isSuppressedAlert(item)) return;
+        ((void (*)(id, SEL, id))activateAlert)(self, @selector(activateAlertItem:), item);
+    });
+
+    __block IMP activateAlertAnimated = hook(@"SBAlertItemsController", @"activateAlertItem:animated:", ^(id self, id item, BOOL animated) {
+        if (isSuppressedAlert(item)) return;
+        ((void (*)(id, SEL, id, BOOL))activateAlertAnimated)(self, @selector(activateAlertItem:animated:), item, animated);
     });
 
     // MARK: Keeping the app in front
