@@ -67,7 +67,7 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new",
-                             "mobile@\(host)", "test -d /var/mobile/Media/iPodMuzik && hostname"]
+                             "mobile@\(host)", "test -d /var/mobile/Media/iPodMuzik && uname -n"]
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
