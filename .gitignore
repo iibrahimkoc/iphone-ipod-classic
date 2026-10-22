@@ -4,3 +4,4 @@ build/
 *.dylib
 *.deb
 Tweak/probe/
+.venv/

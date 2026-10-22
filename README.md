@@ -24,6 +24,13 @@ ssh ipod sudo dpkg -i /var/mobile/clickwheel.deb
 
 Both packages install under `/var/jb`, so they only run while the phone is jailbroken.
 
+## Adding music
+
+`Muzik/muzik.sh` tags MP3s converted from YouTube (title, artist, album, year, genre, cover from the
+iTunes Search API, whichever order the file name uses) and adds them to the Music app; then sync the
+iPhone from Finder. `--deneme` previews, `--evet` skips the questions. Processed files move to
+`~/Downloads/iPod-eklendi/`.
+
 ## After a reboot
 
 The jailbreak is semi-tethered: after a restart the phone boots stock iOS. Plug it in and run `./kurtar.sh`.
