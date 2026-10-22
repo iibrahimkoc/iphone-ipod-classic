@@ -325,17 +325,23 @@ struct NowPlayingView: View {
                     HStack(spacing: 6) {
                         Text(player.queueCount > 0 ? "\(player.queueIndex + 1) / \(player.queueCount)" : " ")
                         Spacer()
-                        switch ratings.rating(of: item) {
-                        case .liked?: Image(systemName: "heart.fill")
-                        case .disliked?: Image(systemName: "hand.thumbsdown.fill")
-                        case nil: EmptyView()
+                        // Each icon sits in the same box, so a taller one (like the heart) can't grow the row.
+                        Group {
+                            switch ratings.rating(of: item) {
+                            case .liked?: Image(systemName: "heart.fill")
+                            case .disliked?: Image(systemName: "xmark")
+                            case nil: EmptyView()
+                            }
+                            if player.shuffle { Image(systemName: "shuffle") }
+                            if player.repeatMode != .off {
+                                Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
+                            }
                         }
-                        if player.shuffle { Image(systemName: "shuffle") }
-                        if player.repeatMode != .off {
-                            Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-                        }
+                        .font(.system(size: h * 0.055, weight: .semibold))
+                        .frame(width: h * 0.08, height: h * 0.07)
                     }
                     .font(.system(size: h * 0.07, weight: .semibold))
+                    .frame(height: h * 0.08)
                     HStack(alignment: .top, spacing: 10) {
                         artwork(item, size: h * 0.5)
                         VStack(alignment: .leading, spacing: 4) {
