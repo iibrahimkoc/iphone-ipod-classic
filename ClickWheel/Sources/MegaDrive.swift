@@ -7,7 +7,7 @@ import AVFoundation
 /// they reach the one running game through `current`.
 final class MegaDrive: NSObject {
     static let folder = URL(fileURLWithPath: "/var/mobile/Media/iPodOyun")
-    private static let extensions: Set<String> = ["md", "gen", "bin", "smd", "sms", "gg"]
+    private static let extensions: Set<String> = ["md", "gen", "bin", "smd", "68k", "sgd", "sms", "gg"]
     private static let folderPath = UnsafePointer(strdup(folder.path)!)
     private static var current: MegaDrive?
 
