@@ -22,6 +22,14 @@
 	<array>
 		<string>com.apple.radios.plist</string>
 	</array>
+	<key>com.apple.photos.bourgeoisie</key>
+	<true/>
+	<key>com.apple.private.photos.service.internal.library</key>
+	<true/>
+	<key>com.apple.private.photos.service.internal.resource</key>
+	<true/>
+	<key>com.apple.private.photos.allowassetexpunge</key>
+	<true/>
 	<key>com.apple.security.iokit-user-client-class</key>
 	<array>
 		<string>IOSurfaceRootUserClient</string>

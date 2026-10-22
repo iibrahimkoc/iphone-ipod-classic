@@ -17,6 +17,8 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
     /// Goes up with every photo, for the white flash on screen.
     @Published private(set) var shots = 0
     @Published private(set) var message: String?
+    /// The last photo saved, for the Mac's "deleteshot" test command.
+    private(set) var lastSaved: String?
     /// Width / height of the preview on screen; photos are cropped to it, so they hold what was seen.
     var visibleAspect: CGFloat = 4 / 3
 
@@ -162,9 +164,13 @@ final class CameraController: NSObject, ObservableObject, AVCapturePhotoCaptureD
             guard status == .authorized || status == .limited else {
                 return DispatchQueue.main.async { self.show("Fotoğraflar izni yok") }
             }
+            var id: String?
             PHPhotoLibrary.shared().performChanges({
-                PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+                let request = PHAssetCreationRequest.forAsset()
+                request.addResource(with: .photo, data: data, options: nil)
+                id = request.placeholderForCreatedAsset?.localIdentifier
             }) { saved, error in
+                if saved { self.lastSaved = id }
                 log.notice("saved: \(saved), error: \(String(describing: error), privacy: .public)")
                 DispatchQueue.main.async { self.show(saved ? "Kaydedildi" : "Kaydedilemedi") }
             }
@@ -231,16 +237,31 @@ final class PhotoLibrary: ObservableObject {
         }
     }
 
-    /// iOS asks for confirmation itself before the photo goes to Recently Deleted.
+    /// Moves the photo to Recently Deleted.
     func delete(_ index: Int, done: @escaping (Bool) -> Void) {
         guard assets.indices.contains(index) else { return done(false) }
-        let asset = assets[index]
-        PHPhotoLibrary.shared().performChanges({ PHAssetChangeRequest.deleteAssets([asset] as NSArray) }) { deleted, _ in
+        Self.delete(assets[index]) { deleted in
             DispatchQueue.main.async {
                 guard deleted else { return done(false) }
                 self.load { done(true) }
             }
         }
+    }
+
+    static func delete(_ asset: PHAsset, done: @escaping (Bool) -> Void) {
+        let start = Date()
+        PHPhotoLibrary.shared().performChanges({ PHAssetChangeRequest.deleteAssets([asset] as NSArray) }) { deleted, error in
+            log.notice("deleted: \(deleted) after \(Date().timeIntervalSince(start)) s, error: \(String(describing: error), privacy: .public)")
+            done(deleted)
+        }
+    }
+
+    /// The Mac's "deleteshot" test command: deletes the photo the camera saved last.
+    static func deleteLastShot(_ camera: CameraController) {
+        guard let id = camera.lastSaved, let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else {
+            return log.notice("deleteshot: no photo")
+        }
+        delete(asset) { _ in }
     }
 
     /// The photo on screen. Only the newest request counts: an older one still loading is

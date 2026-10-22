@@ -144,6 +144,9 @@ final class IPodModel: ObservableObject {
         NotificationCenter.default.addObserver(forName: RemoteControl.shot, object: nil, queue: nil) { [unowned self] _ in
             DispatchQueue.main.async { self.remoteShot() }
         }
+        NotificationCenter.default.addObserver(forName: RemoteControl.deleteShot, object: nil, queue: nil) { [unowned self] _ in
+            PhotoLibrary.deleteLastShot(self.camera)
+        }
         battery.onQuarantineChange = { [unowned self] on in on ? self.enterQuarantine() : self.leaveQuarantine() }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) {
             [unowned self] _ in

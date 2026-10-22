@@ -4,8 +4,8 @@ import AVFoundation
 /// the music folder (watched, so it's handled at once), and the app keeps ".nowplaying.json"
 /// there up to date for the Mac to read.
 ///
-/// Commands: toggle, next, prev, vol <0-100>, shot (opens the camera if needed and takes a photo,
-/// for testing from the Mac)
+/// Commands: toggle, next, prev, vol <0-100>, and for testing from the Mac: shot (opens the camera
+/// if needed and takes a photo), deleteshot (deletes that photo)
 final class RemoteControl {
     private let player: PlayerController
     private let volume: VolumeController
@@ -29,6 +29,7 @@ final class RemoteControl {
     }
 
     static let shot = Notification.Name("com.ibrahimkoc.clickwheel.shot")
+    static let deleteShot = Notification.Name("com.ibrahimkoc.clickwheel.deleteshot")
 
     private func readCommand() {
         let file = folder.appendingPathComponent(".command")
@@ -41,6 +42,8 @@ final class RemoteControl {
         case "prev"?: player.previous()
         case "shot"?:
             NotificationCenter.default.post(name: Self.shot, object: nil)
+        case "deleteshot"?:
+            NotificationCenter.default.post(name: Self.deleteShot, object: nil)
         case "vol"?:
             if parts.count > 1, let percent = Float(parts[1]) { volume.set(percent / 100) }
         default: break
