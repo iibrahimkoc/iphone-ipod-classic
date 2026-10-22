@@ -24,6 +24,8 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
     }
 
     @Published private(set) var name: String?
+    /// The iPod's Mac Kumandası screen is open (its ".macremote" flag is there); see MacRemoteLink.
+    @Published private(set) var remoteOpen = false
     @Published private(set) var nowPlaying: NowPlaying? {
         didSet {
             // Starting counts, and so does pausing (not the first status read at launch).
@@ -55,12 +57,9 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         browser.delegate = self
         browser.searchForServices(ofType: "_ipodmuzik._tcp.", inDomain: "local.")
         probeTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.probe() }
-        // Always read (the Mac's keys follow it), every 1.5 s while the remote is open, else every 4.5 s.
-        var tick = 0
+        // Always read: the Mac's keys follow it, and it says when the iPod's Mac Kumandası opens.
         statusTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            tick += 1
-            guard let self = self, self.watching || tick % 3 == 0 else { return }
-            self.refreshStatus()
+            self?.refreshStatus()
         }
         probe()
     }
@@ -135,11 +134,47 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         }
     }
 
+    /// The now-playing status, and whether Mac Kumandası is open, in one call.
     private func refreshStatus() {
-        ssh("cat \(quote(folder + "/.nowplaying.json"))") { data in
-            let status = data.flatMap { try? JSONDecoder().decode(NowPlaying.self, from: $0) }
-            DispatchQueue.main.async { self.nowPlaying = status }
+        ssh("cat \(quote(folder + "/.nowplaying.json")) 2>/dev/null; echo; [ -e \(quote(folder + "/.macremote")) ] && echo MACREMOTE; true") { data in
+            let lines = data.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: "\n") ?? []
+            let status = lines.first { $0.hasPrefix("{") }.flatMap { try? JSONDecoder().decode(NowPlaying.self, from: Data($0.utf8)) }
+            let remote = lines.contains("MACREMOTE")
+            DispatchQueue.main.async {
+                self.nowPlaying = status
+                if self.remoteOpen != remote { self.remoteOpen = remote }
+            }
         }
+    }
+
+    var musicFolder: String { folder }
+
+    /// A not yet started ssh process running `command` on the phone, for output read as it comes.
+    func sshProcess(_ command: String) -> Process? {
+        guard let host = host else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.arguments = sshOptions + ["mobile@\(host)", command]
+        process.standardError = FileHandle.nullDevice
+        return process
+    }
+
+    /// Writes `data` to `name` in the music folder, replacing it in one step.
+    func put(_ data: Data, as name: String) {
+        guard let process = sshProcess("cat > \(quote(folder + "/." + name + ".tmp")) && mv \(quote(folder + "/." + name + ".tmp")) \(quote(folder + "/" + name))") else { return }
+        let input = Pipe()
+        process.standardInput = input
+        process.standardOutput = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return }
+        input.fileHandleForWriting.write(data)
+        try? input.fileHandleForWriting.close()
+    }
+
+    private var sshOptions: [String] {
+        ["-o", "BatchMode=yes", "-o", "ConnectTimeout=4", "-o", "StrictHostKeyChecking=accept-new",
+         "-o", "ControlMaster=auto", "-o", "ControlPersist=120",
+         // The temporary folder's path is too long for the socket name, so use ~/.ssh.
+         "-o", "ControlPath=\(NSHomeDirectory())/.ssh/ipod-%C"]
     }
 
     /// Runs a command on the phone. The SSH connection is kept open between calls (ControlMaster),
@@ -151,11 +186,7 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=4", "-o", "StrictHostKeyChecking=accept-new",
-                             "-o", "ControlMaster=auto", "-o", "ControlPersist=120",
-                             // The temporary folder's path is too long for the socket name, so use ~/.ssh.
-                             "-o", "ControlPath=\(NSHomeDirectory())/.ssh/ipod-%C",
-                             "mobile@\(host)", command]
+        process.arguments = sshOptions + ["mobile@\(host)", command]
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice

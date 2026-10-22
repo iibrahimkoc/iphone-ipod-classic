@@ -70,6 +70,8 @@ enum VolumeKeys {
             return Unmanaged.passUnretained(event)
         }
         let phone = AppDelegate.phone
+        // Keys pressed for the iPod's Mac Kumandası are meant for the Mac.
+        if event.getIntegerValueField(.eventSourceUserData) == MediaKeys.marker { return Unmanaged.passUnretained(event) }
         guard let key = NSEvent(cgEvent: event), key.subtype.rawValue == 8 else {
             return Unmanaged.passUnretained(event)
         }

@@ -23,8 +23,8 @@ struct ContentView: View {
                     onHold: model.hold,
                     onMenu: model.menu,
                     onPlayPause: model.playPause,
-                    onNext: model.player.next,
-                    onPrevious: model.player.previous)
+                    onNext: model.next,
+                    onPrevious: model.previous)
                     .overlay(Group {
                         if case .game = model.current, let game = model.emulator {
                             GamepadOverlay(center: game.console.center, outerRing: game.console.outerRing, onChange: model.setPad)
@@ -121,6 +121,8 @@ struct ScreenView: View {
                             }
                         case .camera:
                             CameraView(camera: model.camera)
+                        case .macRemote:
+                            MacRemoteView(remote: model.macRemote)
                         case .photos(let index):
                             PhotoView(photos: model.photos, index: index)
                         }
@@ -455,6 +457,57 @@ struct NowPlayingView: View {
     private func format(_ time: TimeInterval) -> String {
         let seconds = Int(time)
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+struct MacRemoteView: View {
+    @ObservedObject var remote: MacRemote
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            VStack(alignment: .leading, spacing: h * 0.05) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "laptopcomputer")
+                        .font(.system(size: h * 0.2))
+                        .foregroundColor(Color(white: 0.35))
+                    VStack(alignment: .leading, spacing: 3) {
+                        if !remote.connected {
+                            Text("Mac bağlanıyor…").font(.system(size: h * 0.08, weight: .bold))
+                            Text("Mac'te iPod Müzik açık ve aynı Wi-Fi'de olmalı")
+                                .font(.system(size: h * 0.06))
+                                .foregroundColor(.gray)
+                        } else if let status = remote.status, !status.title.isEmpty {
+                            Text(status.title).font(.system(size: h * 0.08, weight: .bold))
+                            Text(status.artist).font(.system(size: h * 0.07))
+                            Text(status.app).font(.system(size: h * 0.06)).foregroundColor(.gray)
+                        } else {
+                            Text(remote.status?.playing == true ? "Mac'te ses çalıyor" : "Mac'te ses yok")
+                                .font(.system(size: h * 0.08, weight: .bold))
+                        }
+                    }
+                    .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 6) {
+                    Image(systemName: remote.status?.muted == true ? "speaker.slash.fill" : "speaker.fill")
+                    GeometryReader { bar in
+                        ZStack(alignment: .leading) {
+                            Rectangle().fill(Color(white: 0.88))
+                            Rectangle().fill(highlight).frame(width: bar.size.width * CGFloat(remote.volume / 100))
+                        }
+                        .overlay(Rectangle().stroke(Color(white: 0.55), lineWidth: 0.5))
+                    }
+                    .frame(height: h * 0.06)
+                    Text("\(Int(remote.volume.rounded()))%").font(.system(size: h * 0.06, weight: .semibold))
+                }
+                Text("Teker: ses · Orta: oynat/durdur · ⏮ ⏭: parça")
+                    .font(.system(size: h * 0.055))
+                    .foregroundColor(.gray)
+            }
+            .foregroundColor(.black)
+            .padding(10)
+        }
     }
 }
 

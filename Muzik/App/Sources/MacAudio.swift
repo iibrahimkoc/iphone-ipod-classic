@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreAudio
 import Foundation
 
@@ -22,6 +23,33 @@ final class MacAudio {
         playing = now
     }
 
+    /// The output volume, 0…1, as the volume keys set it.
+    static var volume: Float {
+        guard let device = defaultOutput() else { return 0 }
+        return property(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioObjectPropertyScopeOutput) ?? 0
+    }
+
+    static var muted: Bool {
+        guard let device = defaultOutput() else { return false }
+        let mute: UInt32 = property(device, kAudioDevicePropertyMute, scope: kAudioObjectPropertyScopeOutput) ?? 0
+        return mute != 0
+    }
+
+    /// Sets the volume (unmuting above 0) on the output device.
+    static func setVolume(_ level: Float) {
+        guard let device = defaultOutput() else { return }
+        var volume = min(max(level, 0), 1)
+        set(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume, &volume)
+        var mute: UInt32 = volume > 0 ? 0 : 1
+        set(device, kAudioDevicePropertyMute, &mute)
+    }
+
+    private static func set<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: inout T) {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeOutput,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        AudioObjectSetPropertyData(object, &address, 0, nil, UInt32(MemoryLayout<T>.size), &value)
+    }
+
     private static func outputRunning() -> Bool {
         guard let device = defaultOutput() else { return false }
         let running: UInt32 = property(device, kAudioDevicePropertyDeviceIsRunningSomewhere) ?? 0
@@ -32,8 +60,9 @@ final class MacAudio {
         property(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice)
     }
 
-    private static func property<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> T? {
-        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
+    private static func property<T>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector,
+                                    scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> T? {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope,
                                                  mElement: kAudioObjectPropertyElementMain)
         var size = UInt32(MemoryLayout<T>.size)
         let value = UnsafeMutablePointer<T>.allocate(capacity: 1)

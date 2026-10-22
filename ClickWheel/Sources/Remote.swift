@@ -68,3 +68,77 @@ final class RemoteControl {
         try? data.write(to: folder.appendingPathComponent(".nowplaying.json"), options: .atomic)
     }
 }
+
+/// Mac Kumandası: the iPod controls what plays on the Mac. While the screen is open the app keeps
+/// a ".macremote" flag in the music folder; the Mac's iPod Müzik app sees it, picks up each
+/// command file (".mac-*") at once and keeps ".macstatus.json" up to date. Commands: toggle, next,
+/// prev, vol <0-100>.
+final class MacRemote: ObservableObject {
+    struct Status: Decodable {
+        let volume: Int
+        let muted: Bool
+        let title: String
+        let artist: String
+        /// The player the title comes from (Müzik, Spotify), or "".
+        let app: String
+        /// Whether the Mac is putting out sound at all.
+        let playing: Bool
+        /// When the Mac last wrote this; older than a few seconds means it isn't listening.
+        let time: TimeInterval
+    }
+
+    @Published private(set) var status: Status?
+    @Published private(set) var connected = false
+    /// Shown at once when the wheel turns, before the Mac confirms it.
+    @Published private(set) var volume = 0.0
+
+    private let folder = SongLibrary.folder
+    private var timer: Timer?
+    private var sent = 0
+    private var volumeTurned = Date.distantPast
+
+    private var flag: URL { folder.appendingPathComponent(".macremote") }
+
+    func open() {
+        FileManager.default.createFile(atPath: flag.path, contents: nil)
+        read()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.read() }
+    }
+
+    func close() {
+        timer?.invalidate()
+        timer = nil
+        try? FileManager.default.removeItem(at: flag)
+    }
+
+    func send(_ command: String) {
+        sent += 1
+        // Written under another name and then renamed, so the Mac never reads half a command.
+        let temp = folder.appendingPathComponent(".mactmp-\(sent)")
+        let name = String(format: ".mac-%.0f-%d", Date().timeIntervalSince1970 * 1000, sent)
+        guard (try? Data(command.utf8).write(to: temp)) != nil else { return }
+        try? FileManager.default.moveItem(at: temp, to: folder.appendingPathComponent(name))
+    }
+
+    /// One wheel tick is 1/16 of the range, like the volume buttons.
+    func changeVolume(by delta: Int) -> Bool {
+        let new = min(max(volume + Double(delta) * 100 / 16, 0), 100)
+        guard new != volume else { return false }
+        volume = new
+        volumeTurned = Date()
+        send("vol \(Int(new.rounded()))")
+        return true
+    }
+
+    private func read() {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent(".macstatus.json")),
+              let new = try? JSONDecoder().decode(Status.self, from: data) else {
+            connected = false
+            return
+        }
+        status = new
+        connected = Date().timeIntervalSince1970 - new.time < 6
+        // While the wheel is turning, the Mac's answer lags behind it.
+        if Date().timeIntervalSince(volumeTurned) > 1.5 { volume = Double(new.volume) }
+    }
+}

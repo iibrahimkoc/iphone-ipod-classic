@@ -11,6 +11,7 @@ enum MenuAction {
     case clickVolume
     case coverFlow
     case camera
+    case macRemote
     /// All photos, or only the favorites.
     case photos(favorites: Bool)
     case live(LiveList)
@@ -79,6 +80,7 @@ enum Screen {
     case chess
     case game
     case camera
+    case macRemote
     /// Index of the photo on screen, newest first.
     case photos(Int)
 }
@@ -122,6 +124,7 @@ final class IPodModel: ObservableObject {
     let chess = ChessGame()
     let camera = CameraController()
     let photos = PhotoLibrary()
+    let macRemote = MacRemote()
     /// The emulated game on screen.
     private(set) var emulator: Emulator?
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
@@ -213,6 +216,7 @@ final class IPodModel: ObservableObject {
         case .chess: return "Satranç"
         case .game: return emulator?.title ?? "Oyun"
         case .camera: return "Kamera"
+        case .macRemote: return "Mac"
         case .photos: return photos.favoritesOnly ? "Favoriler" : "Fotoğraflar"
         }
     }
@@ -320,6 +324,8 @@ final class IPodModel: ObservableObject {
             break
         case .camera:
             if camera.zoom(by: delta) { Feedback.tick() }
+        case .macRemote:
+            if macRemote.changeVolume(by: delta) { Feedback.tick() }
         case .photos(let index):
             let new = min(max(index + delta, 0), max(photos.assets.count - 1, 0))
             guard new != index else { return }
@@ -356,6 +362,11 @@ final class IPodModel: ObservableObject {
             return
         }
         if case .photos = current { return }
+        if case .macRemote = current {
+            Feedback.tick()
+            macRemote.send("toggle")
+            return
+        }
         if case .nowPlaying = current {
             Feedback.tick()
             // From the rating, a tap goes back to the progress bar.
@@ -392,6 +403,9 @@ final class IPodModel: ObservableObject {
         case .camera:
             camera.start()
             stack.append(.camera)
+        case .macRemote:
+            macRemote.open()
+            stack.append(.macRemote)
         case .photos(let favorites):
             photos.favoritesOnly = favorites
             photos.load()
@@ -444,6 +458,8 @@ final class IPodModel: ObservableObject {
             emulator = nil
         case .camera:
             camera.stop()
+        case .macRemote:
+            macRemote.close()
         default:
             break
         }
@@ -473,13 +489,36 @@ final class IPodModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.camera.capture() }
     }
 
-    /// The wheel's ⏯: switches cameras on the camera screen, plays or pauses everywhere else.
+    /// The wheel's ⏯: switches cameras on the camera screen, plays or pauses the Mac on Mac
+    /// Kumandası, and the iPod's music everywhere else.
     func playPause() {
-        if case .camera = current {
+        switch current {
+        case .camera:
             Feedback.tick()
             camera.flip()
-        } else {
+        case .macRemote:
+            Feedback.tick()
+            macRemote.send("toggle")
+        default:
             player.togglePlay()
+        }
+    }
+
+    func next() {
+        if case .macRemote = current {
+            Feedback.tick()
+            macRemote.send("next")
+        } else {
+            player.next()
+        }
+    }
+
+    func previous() {
+        if case .macRemote = current {
+            Feedback.tick()
+            macRemote.send("prev")
+        } else {
+            player.previous()
         }
     }
 
@@ -519,6 +558,7 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Oyunlar", action: .push("Oyunlar") { [unowned self] in self.gamesMenu() }),
             MenuItem(title: "Kamera", action: .camera),
             MenuItem(title: "Fotoğraflar", action: .push("Fotoğraflar") { [unowned self] in self.photosMenu() }),
+            MenuItem(title: "Mac Kumandası", action: .macRemote),
             MenuItem(title: "Ayarlar", action: .live(.settings)),
         ])
     }

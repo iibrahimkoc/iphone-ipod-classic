@@ -17,6 +17,7 @@ struct iPodMuzikApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let phone = Phone()
     static let macAudio = MacAudio()
+    private let macRemote = MacRemoteLink(phone: AppDelegate.phone)
 
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()

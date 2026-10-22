@@ -136,7 +136,9 @@ final class SongLibrary: ObservableObject {
     private func checkFolder() {
         let entries = folderEntries()
         receiving = entries.contains { $0.lastPathComponent.hasPrefix(".") && $0.pathExtension == "part" }
-        let state = entries.map { "\($0.lastPathComponent)|\(modified($0).timeIntervalSince1970)" }.sorted().joined(separator: "\n")
+        // Hidden files (status, commands, ratings) change all the time and aren't songs.
+        let state = entries.filter { !$0.lastPathComponent.hasPrefix(".") }
+            .map { "\($0.lastPathComponent)|\(modified($0).timeIntervalSince1970)" }.sorted().joined(separator: "\n")
         if state != folderState {
             folderState = state
             reload()
