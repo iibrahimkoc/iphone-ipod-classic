@@ -437,7 +437,18 @@ final class IPodModel: ObservableObject {
             }, detail: ProcessInfo.processInfo.isLowPowerModeEnabled ? "Açık" : "Kapalı"),
             MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
                      detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"),
-        ]
+        ] + headphoneItems()
+    }
+
+    private func headphoneItems() -> [MenuItem] {
+        guard let levels = route.headphoneBattery else { return [] }
+        let name = route.output == .airpods ? "AirPods" : "Kulaklık"
+        let parts = [("Sol", levels.left), ("Sağ", levels.right), ("Kutu", levels.case)]
+            .compactMap { title, level in level.map { (title, $0) } }
+        if parts.isEmpty, let single = levels.single {
+            return [MenuItem(title: name, action: .run {}, detail: "%\(single)")]
+        }
+        return parts.map { MenuItem(title: "\(name) \($0.0)", action: .run {}, detail: "%\($0.1)") }
     }
 
     /// "7 sa 20 dk" / "45 dk".
@@ -588,8 +599,8 @@ final class AudioRouteController: ObservableObject {
     }
 
     @Published private(set) var output = Output.speaker
-    /// Battery percent of the connected Bluetooth headphones (the lower earbud for AirPods).
-    @Published private(set) var headphoneBattery: Int?
+    /// Battery levels of the connected Bluetooth headphones.
+    @Published private(set) var headphoneBattery: HeadphoneBattery.Levels?
     private var observer: NSObjectProtocol?
     private var timer: Timer?
     private var onHeadphonesLost: (() -> Void)?
@@ -620,13 +631,25 @@ final class AudioRouteController: ObservableObject {
         } else {
             output = .speaker
         }
-        headphoneBattery = output == .speaker ? nil : HeadphoneBattery.percent()
+        let levels = output == .speaker ? nil : HeadphoneBattery.read()
+        if levels != headphoneBattery { headphoneBattery = levels }
     }
 }
 
 /// Reads accessory batteries from the private BatteryCenter framework, the source of the
 /// Batteries widget. AirPods report each earbud and the case as separate entries.
 enum HeadphoneBattery {
+    struct Levels: Equatable {
+        var left: Int?
+        var right: Int?
+        var `case`: Int?
+        /// Headphones that report one level for both sides.
+        var single: Int?
+
+        /// The lower earbud, which is the one that runs out first.
+        var lowest: Int? { [left, right].compactMap { $0 }.min() ?? single }
+    }
+
     private static let controller: NSObject? = {
         dlopen("/System/Library/PrivateFrameworks/BatteryCenter.framework/BatteryCenter", RTLD_NOW)
         // Every call is checked first: a selector missing on this iOS version would crash the app.
@@ -636,20 +659,27 @@ enum HeadphoneBattery {
         return cls.init()
     }()
 
-    static func percent() -> Int? {
+    static func read() -> Levels? {
         let connected = NSSelectorFromString("connectedDevices")
         guard let controller = controller, controller.responds(to: connected),
-              let devices = controller.perform(connected)?
-                .takeUnretainedValue() as? [NSObject] else { return nil }
-        let entries = devices.filter { !bool($0, "isInternal") }.map { device in
-            // KVC would throw on a missing key, so the name is read only when it exists.
-            (name: device.responds(to: NSSelectorFromString("name")) ? device.value(forKey: "name") as? String ?? "" : "",
-             percent: integer(device, "percentCharge"),
-             charging: bool(device, "isCharging"))
+              let devices = controller.perform(connected)?.takeUnretainedValue() as? [NSObject] else { return nil }
+        var levels = Levels()
+        // Each part's identifier is the device address plus "-Left", "-Right", "-Case" or "-Single".
+        for device in devices where !bool(device, "isInternal") {
+            let percent = integer(device, "percentCharge")
+            guard percent >= 0, let identifier = string(device, "identifier") else { continue }
+            if identifier.hasSuffix("-Left") { levels.left = percent }
+            else if identifier.hasSuffix("-Right") { levels.right = percent }
+            else if identifier.hasSuffix("-Case") { levels.case = percent }
+            else { levels.single = percent }
         }
-        // The case's level isn't what's playing, so the earbuds come first when they're listed.
-        let buds = entries.filter { !$0.name.localizedCaseInsensitiveContains("case") && !$0.charging }
-        return (buds.isEmpty ? entries : buds).map(\.percent).filter { $0 > 0 }.min()
+        return levels == Levels() ? nil : levels
+    }
+
+    private static func string(_ object: NSObject, _ selector: String) -> String? {
+        let sel = NSSelectorFromString(selector)
+        guard object.responds(to: sel) else { return nil }
+        return object.perform(sel)?.takeUnretainedValue() as? String
     }
 
     private static func bool(_ object: NSObject, _ selector: String) -> Bool {

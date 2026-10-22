@@ -79,7 +79,7 @@ struct ScreenView: View {
                         hudBar(hud, height: barHeight)
                     } else {
                         TitleBar(title: library.receiving ? "Müzik alınıyor…" : model.title, isPlaying: player.isPlaying, hasItem: player.item != nil,
-                                 output: route.output, headphoneBattery: route.headphoneBattery, batteryLevel: battery.level, charging: battery.charging,
+                                 output: route.output, headphoneBattery: route.headphoneBattery?.lowest, batteryLevel: battery.level, charging: battery.charging,
                                  sleeping: sleepTimer.endDate != nil)
                     }
                 }
@@ -187,10 +187,11 @@ struct TitleBar: View {
                         .opacity(hasItem ? 1 : 0)
                     Image(systemName: output.symbol)
                         .font(.system(size: geo.size.height * 0.42))
-                    if let percent = headphoneBattery {
+                    // Only a low headphone battery is worth the space; the Pil screen has the details.
+                    if let percent = headphoneBattery, percent <= 20 {
                         Text("\(percent)%")
                             .font(.system(size: geo.size.height * 0.36, weight: .medium))
-                            .foregroundColor(percent <= 20 ? .red : Color(white: 0.3))
+                            .foregroundColor(.red)
                     }
                     if sleeping {
                         Image(systemName: "moon.fill")
