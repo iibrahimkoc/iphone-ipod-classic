@@ -5,6 +5,8 @@ struct RemoteView: View {
     @EnvironmentObject private var phone: Phone
     @State private var volume = 50.0
     @State private var draggingVolume = false
+    @State private var lastVolumeSend = Date.distantPast
+    @State private var sentVolume = -1
 
     var body: some View {
         VStack(spacing: 12) {
@@ -41,7 +43,10 @@ struct RemoteView: View {
                     Image(systemName: "speaker.fill").foregroundStyle(.secondary)
                     Slider(value: $volume, in: 0 ... 100) { editing in
                         draggingVolume = editing
-                        if !editing { phone.command("vol \(Int(volume))") }
+                        if !editing { sendVolume(force: true) }
+                    }
+                    .onChange(of: volume) { _ in
+                        if draggingVolume { sendVolume(force: false) }
                     }
                     Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                 }
@@ -73,6 +78,16 @@ struct RemoteView: View {
         .frame(width: 280)
         .onAppear { phone.watching = true }
         .onDisappear { phone.watching = false }
+    }
+
+    /// Sends the volume while dragging, at most every 0.15 s so commands don't pile up; the final
+    /// value always goes out on release.
+    private func sendVolume(force: Bool) {
+        let value = Int(volume)
+        guard value != sentVolume, force || Date().timeIntervalSince(lastVolumeSend) > 0.15 else { return }
+        sentVolume = value
+        lastVolumeSend = Date()
+        phone.command("vol \(value)")
     }
 
     private func button(_ symbol: String, size: CGFloat = 18, action: @escaping () -> Void) -> some View {
