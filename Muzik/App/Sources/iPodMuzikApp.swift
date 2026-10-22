@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
         statusItem = item
+        VolumeKeys.update()
 
         if !CommandLine.arguments.contains("--gizli") { openMain() }
     }

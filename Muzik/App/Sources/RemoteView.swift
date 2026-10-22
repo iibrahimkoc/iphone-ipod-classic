@@ -11,6 +11,7 @@ struct RemoteView: View {
     @State private var lastVolumeSend = Date.distantPast
     @State private var sentVolume = -1
     @State private var startAtLogin = LoginItem.enabled
+    @State private var volumeKeys = VolumeKeys.enabled
 
     var body: some View {
         VStack(spacing: 12) {
@@ -80,6 +81,15 @@ struct RemoteView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .onChange(of: startAtLogin) { LoginItem.enabled = $0 }
+            Toggle("Mac ses tuşları iPod'u kontrol etsin", isOn: $volumeKeys)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .onChange(of: volumeKeys) { VolumeKeys.enabled = $0 }
+            if volumeKeys && !VolumeKeys.running {
+                Text("Sistem Ayarları › Gizlilik ve Güvenlik › Erişilebilirlik'te iPod Müzik'e izin ver.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Text(phone.name ?? "")
                     .font(.caption)

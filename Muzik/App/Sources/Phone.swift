@@ -53,6 +53,53 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         }
     }
 
+    /// The volume the Mac's volume keys last set, so quick presses build on each other instead of
+    /// on a status that hasn't caught up yet.
+    private var keyVolume: Double?
+    private var lastVolumeKey = Date.distantPast
+    private var volumeBeforeMute: Double?
+
+    /// One step of the Mac's volume keys; 16 steps, like the phone's side buttons.
+    func stepVolume(_ steps: Int) {
+        currentVolume { volume in
+            self.volumeBeforeMute = nil
+            self.setKeyVolume(volume + Double(steps) * 100 / 16)
+        }
+    }
+
+    /// The Mac's mute key: silences the iPod, and brings back the earlier volume when pressed again.
+    func toggleMute() {
+        currentVolume { volume in
+            if volume > 0 {
+                self.volumeBeforeMute = volume
+                self.setKeyVolume(0)
+            } else {
+                self.setKeyVolume(self.volumeBeforeMute ?? 50)
+                self.volumeBeforeMute = nil
+            }
+        }
+    }
+
+    /// The last key-set volume during a burst of presses, otherwise the phone's own (read fresh,
+    /// since the status is only polled while the remote is open).
+    private func currentVolume(_ use: @escaping (Double) -> Void) {
+        if let volume = keyVolume, Date().timeIntervalSince(lastVolumeKey) < 3 { return use(volume) }
+        ssh("cat \(quote(folder + "/.nowplaying.json"))") { data in
+            guard let status = data.flatMap({ try? JSONDecoder().decode(NowPlaying.self, from: $0) }) else { return }
+            DispatchQueue.main.async {
+                self.nowPlaying = status
+                use(Double(status.volume))
+            }
+        }
+    }
+
+    private func setKeyVolume(_ volume: Double) {
+        let volume = min(max(volume, 0), 100)
+        keyVolume = volume
+        lastVolumeKey = Date()
+        command("vol \(Int(volume.rounded()))")
+    }
+
     private func refreshStatus() {
         ssh("cat \(quote(folder + "/.nowplaying.json"))") { data in
             let status = data.flatMap { try? JSONDecoder().decode(NowPlaying.self, from: $0) }
