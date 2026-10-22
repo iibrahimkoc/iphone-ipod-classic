@@ -121,7 +121,13 @@ __attribute__((constructor)) static void init(void) {
                 if (singlePressUp) ((void (*)(id, SEL))singlePressUp)(buttonActions, @selector(performSinglePressUpActions));
             });
         }
+        BOOL wasLocked = !escaped && isLocked();
         ((void (*)(id, SEL))buttonDown)(self, @selector(performInitialButtonDownActions));
+        // Waking with the home button: unlock on the press itself, like a side-button wake, instead
+        // of letting the release run iOS's unlock animation (which briefly shows the status bar).
+        if (wasLocked && singlePressUp) {
+            ((void (*)(id, SEL))singlePressUp)(self, @selector(performSinglePressUpActions));
+        }
     });
 
     singlePressUp = hook(@"SBHomeHardwareButtonActions", @"performSinglePressUpActions", ^(id self) {
