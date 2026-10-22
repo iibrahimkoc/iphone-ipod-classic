@@ -2,11 +2,13 @@
 //  - The app is launched whenever the home screen would show (after unlock, respring, app exit).
 //  - The home button returns to the app instead of the home screen; double/triple/long presses are ignored.
 //  - Control Center, Notification Center and other system gestures are disabled while unlocked.
+//  - Waking the screen skips the lock screen (only possible when the phone has no passcode).
 //  - Escape hatch: 5 quick home presses unlocks everything until the iPod app is reopened or the phone locks.
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <notify.h>
 
 static NSString *const kAppID = @"com.ibrahimkoc.clickwheel";
 static const NSUInteger kEscapePresses = 5;
@@ -150,6 +152,21 @@ __attribute__((constructor)) static void init(void) {
     __block IMP setUILocked = hook(@"SBLockScreenManager", @"_setUILocked:", ^(id self, BOOL locked) {
         ((void (*)(id, SEL, BOOL))setUILocked)(self, @selector(_setUILocked:), locked);
         if (locked) setEscaped(NO);
+    });
+
+    // MARK: Skipping the lock screen
+
+    // SpringBoard posts this whenever the screen turns off (state 1) or on (state 0).
+    int token;
+    notify_register_dispatch("com.apple.springboard.hasBlankedScreen", &token, dispatch_get_main_queue(), ^(int t) {
+        uint64_t blanked = 0;
+        notify_get_state(t, &blanked);
+        if (blanked || escaped || !isLocked()) return;
+        id manager = SEND(id)(NSClassFromString(@"SBLockScreenManager"), @selector(sharedInstance));
+        SEL unlock = NSSelectorFromString(@"unlockUIFromSource:withOptions:");
+        if ([manager respondsToSelector:unlock]) {
+            ((void (*)(id, SEL, int, id))objc_msgSend)(manager, unlock, 0, nil);
+        }
     });
 
     // After a respring the phone is usually unlocked and nothing triggers a launch.
