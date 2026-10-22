@@ -24,5 +24,11 @@
 	<string>public.app-category.music</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Şarkıları Müzik uygulamasına eklemek için.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ipodmuzik._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Aynı Wi-Fi'deki iPod'u bulup şarkı göndermek için.</string>
 </dict>
 </plist>

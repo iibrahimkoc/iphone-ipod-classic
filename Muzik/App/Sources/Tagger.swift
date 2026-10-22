@@ -48,9 +48,19 @@ enum Tagger {
         return first
     }
 
+    /// Tags the files and adds them to the Mac's Music app (for a Finder sync).
     static func apply(_ items: [(URL, Info)]) async throws -> [Result] {
+        try await tag(items, mode: "--uygula")
+    }
+
+    /// Only writes the tags, before the files are sent to the iPod.
+    static func tagOnly(_ items: [(URL, Info)]) async throws -> [Result] {
+        try await tag(items, mode: "--etiketle")
+    }
+
+    private static func tag(_ items: [(URL, Info)], mode: String) async throws -> [Result] {
         let input = try JSONEncoder().encode(items.map { Apply(path: $0.0.path, info: $0.1) })
-        return try JSONDecoder().decode([Result].self, from: try await run(["--uygula"], input: input))
+        return try JSONDecoder().decode([Result].self, from: try await run([mode], input: input))
     }
 
     private static func run(_ arguments: [String], input: Data? = nil) async throws -> Data {

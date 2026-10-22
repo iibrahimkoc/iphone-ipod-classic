@@ -4,7 +4,7 @@ import MediaPlayer
 /// iPod-style Cover Flow: the selected album faces front, its neighbors stand angled to the
 /// sides, all with reflections, on black. The wheel moves through albums.
 struct CoverFlowView: View {
-    let albums: [MPMediaItemCollection]
+    let albums: [Album]
     let index: Int
 
     /// How many albums are drawn on each side of the selected one.
@@ -34,9 +34,9 @@ struct CoverFlowView: View {
                     .animation(.spring(response: 0.32, dampingFraction: 0.86), value: index)
 
                     VStack(spacing: 2) {
-                        Text(Library.albumName(albums[index].representativeItem))
+                        Text(albums[index].name)
                             .font(.system(size: geo.size.height * 0.07, weight: .bold))
-                        Text(Library.artistName(albums[index].representativeItem))
+                        Text(albums[index].artistName)
                             .font(.system(size: geo.size.height * 0.06))
                             .foregroundColor(Color(white: 0.7))
                     }
@@ -61,7 +61,7 @@ struct CoverFlowView: View {
 }
 
 private struct ReflectedCover: View {
-    let album: MPMediaItemCollection
+    let album: Album
     let size: CGFloat
 
     var body: some View {
@@ -96,13 +96,12 @@ private struct ReflectedCover: View {
 
 /// Artwork decoding is slow enough to stutter the scroll animation, so covers are cached.
 enum ArtworkCache {
-    private static let cache = NSCache<NSNumber, UIImage>()
+    private static let cache = NSCache<NSString, UIImage>()
 
-    static func image(for album: MPMediaItemCollection, size: CGFloat) -> UIImage? {
-        guard let item = album.representativeItem else { return nil }
-        let key = NSNumber(value: item.albumPersistentID)
+    static func image(for album: Album, size: CGFloat) -> UIImage? {
+        let key = album.id as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        guard let image = item.artwork?.image(at: CGSize(width: size * 2, height: size * 2)) else { return nil }
+        guard let image = album.songs[0].artwork(size: size * 2) else { return nil }
         cache.setObject(image, forKey: key)
         return image
     }

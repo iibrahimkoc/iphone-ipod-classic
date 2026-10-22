@@ -8,6 +8,7 @@ struct Track: Identifiable {
         case duplicate
         case adding
         case added
+        case sent
         case failed(String)
     }
 
@@ -22,6 +23,7 @@ struct Track: Identifiable {
 }
 
 struct ContentView: View {
+    @StateObject private var phone = Phone()
     @State private var tracks: [Track] = []
     @State private var dropTargeted = false
     @State private var uploading = false
@@ -31,7 +33,7 @@ struct ContentView: View {
     private var allDone: Bool {
         !tracks.isEmpty && tracks.allSatisfy {
             switch $0.state {
-            case .added, .duplicate, .failed: return true
+            case .added, .sent, .duplicate, .failed: return true
             default: return false
             }
         }
@@ -100,21 +102,36 @@ struct ContentView: View {
 
     private var footer: some View {
         HStack {
+            phoneStatus
+            Spacer()
             if allDone {
-                Label("Telefonu tak → Finder → iPhone → Müzik → Eşzamanla", systemImage: "iphone")
-                    .font(.callout)
-                Spacer()
                 Button("Temizle") { tracks.removeAll() }
             } else {
-                Button("Dosya Ekle…", action: choose)
-                Spacer()
                 if uploading || searching { ProgressView().controlSize(.small) }
-                Button(uploading ? "Yükleniyor…" : "Yükle (\(readyCount))", action: upload)
+                Menu("Mac'e Ekle") {
+                    Button("Mac'teki Müzik uygulamasına ekle (Finder ile eşitlemek için)", action: upload)
+                }
+                .fixedSize()
+                .disabled(readyCount == 0 || uploading)
+                Button(uploading ? "Gönderiliyor…" : "iPod'a Gönder (\(readyCount))", action: sendToPhone)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(readyCount == 0 || uploading)
+                    .disabled(readyCount == 0 || uploading || !phone.found)
             }
         }
         .padding(12)
+    }
+
+    private var phoneStatus: some View {
+        Group {
+            if let name = phone.name {
+                Label(name, systemImage: "iphone")
+            } else {
+                Label("iPod aranıyor… (aynı Wi-Fi'de olmalı)", systemImage: "iphone.slash")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .lineLimit(1)
     }
 
     // MARK: Actions
@@ -169,6 +186,37 @@ struct ContentView: View {
         }
     }
 
+    /// Tags the files, then copies them straight into the iPod's music folder over Wi-Fi.
+    private func sendToPhone() {
+        let items = tracks.compactMap { track in track.info.map { (track.id, track.file, $0) } }
+        guard !items.isEmpty else { return }
+        uploading = true
+        items.forEach { update($0.0, .adding) }
+        Task {
+            let tagged = (try? await Tagger.tagOnly(items.map { ($0.1, $0.2) })) ?? []
+            for (id, file, info) in items {
+                guard tagged.first(where: { $0.path == file.path })?.ok == true else {
+                    update(id, .failed("Etiketlenemedi"))
+                    continue
+                }
+                do {
+                    try await phone.send(file, as: fileName(info, ext: file.pathExtension))
+                    update(id, .sent)
+                } catch {
+                    update(id, .failed("Gönderilemedi (iPod açık ve aynı Wi-Fi'de mi?)"))
+                }
+            }
+            uploading = false
+        }
+    }
+
+    /// "Sertab Erener - Yanarım.mp3", with characters that can't be in a file name removed.
+    private func fileName(_ info: Tagger.Info, ext: String) -> String {
+        let base = "\(info.artistName) - \(info.trackName)"
+            .components(separatedBy: CharacterSet(charactersIn: "/:\\\0")).joined(separator: " ")
+        return "\(base).\(ext.lowercased())"
+    }
+
     private func update(_ id: UUID, _ state: Track.State) {
         if let index = tracks.firstIndex(where: { $0.id == id }) { tracks[index].state = state }
     }
@@ -203,7 +251,8 @@ private struct TrackRow: View {
             return "\(info.artistName) · \(info.collectionName)" + (guessed ? "  (dosya adından tahmin)" : "")
         case .duplicate: return "Aynı şarkı zaten listede"
         case .adding: return "Ekleniyor…"
-        case .added: return "Müzik uygulamasına eklendi"
+        case .added: return "Mac'teki Müzik uygulamasına eklendi"
+        case .sent: return "iPod'a gönderildi"
         case .failed(let message): return message
         }
     }
@@ -227,7 +276,7 @@ private struct TrackRow: View {
         switch track.state {
         case .searching, .adding:
             ProgressView().controlSize(.small)
-        case .added:
+        case .added, .sent:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)

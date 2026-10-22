@@ -13,7 +13,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 ScreenView(model: model, player: model.player, volume: model.volume,
                            bluetooth: model.bluetooth, wifi: model.wifi, route: model.route, airplane: model.airplane,
-                           battery: model.battery)
+                           battery: model.battery, library: model.library)
                     .frame(width: screenWidth, height: screenHeight)
                     .padding(.top, 24)
                 Spacer(minLength: 0)
@@ -61,6 +61,7 @@ struct ScreenView: View {
     @ObservedObject var route: AudioRouteController
     @ObservedObject var airplane: AirplaneController
     @ObservedObject var battery: BatteryMonitor
+    @ObservedObject var library: SongLibrary
 
     @State private var swipeAxis: Axis?
     @State private var lastTranslation = CGSize.zero
@@ -76,13 +77,13 @@ struct ScreenView: View {
                     if let hud = model.hud {
                         hudBar(hud, height: barHeight)
                     } else {
-                        TitleBar(title: model.title, isPlaying: player.isPlaying, hasItem: player.item != nil,
+                        TitleBar(title: library.receiving ? "Müzik alınıyor…" : model.title, isPlaying: player.isPlaying, hasItem: player.item != nil,
                                  output: route.output, batteryLevel: battery.level, charging: battery.charging)
                     }
                 }
                 .frame(height: barHeight)
                 Group {
-                    if !model.authorized {
+                    if !model.authorized && library.songs.isEmpty {
                         Text("Müzik erişimi yok.\nAyarlar › iPod › Medya ve Apple Music")
                             .font(.system(size: rowHeight * 0.4))
                             .multilineTextAlignment(.center)
@@ -298,11 +299,11 @@ struct NowPlayingView: View {
                     HStack(alignment: .top, spacing: 10) {
                         artwork(item, size: h * 0.5)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title ?? "Bilinmeyen")
+                            Text(item.title)
                                 .font(.system(size: h * 0.08, weight: .bold))
-                            Text(item.artist ?? "")
+                            Text(item.artistName)
                                 .font(.system(size: h * 0.07))
-                            Text(item.albumTitle ?? "")
+                            Text(item.albumName)
                                 .font(.system(size: h * 0.07))
                                 .foregroundColor(.gray)
                         }
@@ -331,9 +332,9 @@ struct NowPlayingView: View {
         }
     }
 
-    private func artwork(_ item: MPMediaItem, size: CGFloat) -> some View {
+    private func artwork(_ item: Song, size: CGFloat) -> some View {
         Group {
-            if let image = item.artwork?.image(at: CGSize(width: size * 2, height: size * 2)) {
+            if let image = item.artwork(size: size * 2) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 ZStack {

@@ -19,7 +19,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 1.18
+Version: 2.0
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc

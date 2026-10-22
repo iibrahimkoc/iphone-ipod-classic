@@ -20,6 +20,9 @@ targets:
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSAppleMusicUsageDescription: "Müzik kütüphanendeki şarkıları çalmak için."
+        UIBackgroundModes: [audio]
+        NSLocalNetworkUsageDescription: "Mac'teki iPod Müzik uygulamasının telefonu bulup şarkı gönderebilmesi için."
+        NSBonjourServices: [_ipodmuzik._tcp]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ibrahimkoc.clickwheel

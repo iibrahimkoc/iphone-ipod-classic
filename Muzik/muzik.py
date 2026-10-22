@@ -12,6 +12,7 @@ For the iPod Müzik app:
   muzik.sh --json FILE...   prints [{"path", "source", "info"}] without changing anything
   muzik.sh --uygula         reads [{"path", "info"}] on stdin, tags and adds each to Music,
                             prints [{"path", "ok", "error"}]
+  muzik.sh --etiketle       same, but only writes the tags (the app then sends the file to the iPod)
 """
 import json
 import re
@@ -129,12 +130,13 @@ def json_lookup(paths):
     print(json.dumps(out, ensure_ascii=False))
 
 
-def json_apply():
+def json_apply(add):
     out = []
     for entry in json.load(sys.stdin):
         try:
             write_tags(entry["path"], entry["info"])
-            add_to_music(entry["path"])
+            if add:
+                add_to_music(entry["path"])
             out.append({"path": entry["path"], "ok": True})
         except Exception as error:  # reported per file to the app
             out.append({"path": entry["path"], "ok": False, "error": str(error)})
@@ -142,8 +144,8 @@ def json_apply():
 
 
 def main():
-    if "--uygula" in sys.argv:
-        json_apply()
+    if "--uygula" in sys.argv or "--etiketle" in sys.argv:
+        json_apply(add="--uygula" in sys.argv)
         return
     if "--json" in sys.argv:
         json_lookup([Path(a).expanduser() for a in sys.argv[1:] if not a.startswith("--")])

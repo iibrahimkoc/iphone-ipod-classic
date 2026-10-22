@@ -5,7 +5,7 @@ import notify
 
 enum MenuAction {
     case push(String, () -> [MenuItem])
-    case play([MPMediaItem], Int)
+    case play([Song], Int)
     case shuffleAll
     case nowPlaying
     case clickVolume
@@ -95,8 +95,9 @@ final class IPodModel: ObservableObject {
     let wifi = WiFiController()
     let airplane = AirplaneController()
     let battery = BatteryMonitor()
+    let library = SongLibrary()
     /// Albums for Cover Flow, loaded when it opens.
-    private(set) var albums: [MPMediaItemCollection] = []
+    private(set) var albums: [Album] = []
     private(set) lazy var route = AudioRouteController(player: player)
     private var hideHUD: DispatchWorkItem?
 
@@ -179,6 +180,7 @@ final class IPodModel: ObservableObject {
         MPMediaLibrary.requestAuthorization { status in
             DispatchQueue.main.async {
                 self.authorized = status == .authorized
+                self.library.reload()
                 self.stack = [.list(self.mainMenu())]
             }
         }
@@ -256,8 +258,7 @@ final class IPodModel: ObservableObject {
             guard albums.indices.contains(index) else { return }
             Feedback.tick()
             let album = albums[index]
-            stack.append(.list(ListScreen(title: Library.albumName(album.representativeItem),
-                                          items: songsMenu(album.items))))
+            stack.append(.list(ListScreen(title: album.name, items: songsMenu(album.songs))))
             return
         }
         guard let list = currentList, list.items.indices.contains(list.selection) else { return }
@@ -269,14 +270,14 @@ final class IPodModel: ObservableObject {
             player.play(items, from: index)
             stack.append(.nowPlaying)
         case .shuffleAll:
-            player.shuffleAll()
+            player.shuffle(library.songs)
             stack.append(.nowPlaying)
         case .nowPlaying:
             stack.append(.nowPlaying)
         case .clickVolume:
             stack.append(.clickVolume)
         case .coverFlow:
-            albums = Library.albums(of: MPMediaQuery.songs().items ?? [])
+            albums = library.albums(of: library.songs)
             stack.append(.coverFlow(0))
         case .live(let kind):
             stack.append(.live(kind, selection: 0, top: 0))
@@ -425,121 +426,38 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Çalma Listeleri", action: .push("Çalma Listeleri") { [unowned self] in self.playlistsMenu() }),
             MenuItem(title: "Sanatçılar", action: .push("Sanatçılar") { [unowned self] in self.artistsMenu() }),
             MenuItem(title: "Albümler", action: .push("Albümler") { [unowned self] in
-                self.albumsMenu(Library.albums(of: MPMediaQuery.songs().items ?? []))
+                self.albumsMenu(self.library.albums(of: self.library.songs))
             }),
-            MenuItem(title: "Şarkılar", action: .push("Şarkılar") { [unowned self] in self.songsMenu(MPMediaQuery.songs().items ?? []) }),
+            MenuItem(title: "Şarkılar", action: .push("Şarkılar") { [unowned self] in self.songsMenu(self.library.songs) }),
         ]
     }
 
     private func playlistsMenu() -> [MenuItem] {
         (MPMediaQuery.playlists().collections ?? []).compactMap { $0 as? MPMediaPlaylist }.map { playlist in
             let name = playlist.name ?? "Çalma Listesi"
-            return MenuItem(title: name, action: .push(name) { [unowned self] in self.songsMenu(playlist.items) })
+            return MenuItem(title: name, action: .push(name) { [unowned self] in self.songsMenu(self.library.songs(in: playlist)) })
         }
     }
 
     private func artistsMenu() -> [MenuItem] {
-        Library.artists(of: MPMediaQuery.songs().items ?? []).map { artist in
-            let name = Library.artistName(artist.representativeItem)
-            return MenuItem(title: name, action: .push(name) { [unowned self] in
-                let all = MenuItem(title: "Tüm Şarkılar", action: .push(name) { [unowned self] in self.songsMenu(artist.items) })
-                return [all] + self.albumsMenu(Library.albums(of: artist.items))
+        library.artists(of: library.songs).map { artist in
+            MenuItem(title: artist.name, action: .push(artist.name) { [unowned self] in
+                let all = MenuItem(title: "Tüm Şarkılar", action: .push(artist.name) { [unowned self] in self.songsMenu(artist.songs) })
+                return [all] + self.albumsMenu(self.library.albums(of: artist.songs))
             })
         }
     }
 
-    private func albumsMenu(_ albums: [MPMediaItemCollection]) -> [MenuItem] {
+    private func albumsMenu(_ albums: [Album]) -> [MenuItem] {
         albums.map { album in
-            let name = Library.albumName(album.representativeItem)
-            return MenuItem(title: name, action: .push(name) { [unowned self] in self.songsMenu(album.items) })
+            MenuItem(title: album.name, action: .push(album.name) { [unowned self] in self.songsMenu(album.songs) })
         }
     }
 
-    private func songsMenu(_ items: [MPMediaItem]) -> [MenuItem] {
-        items.enumerated().map { index, item in
-            MenuItem(title: item.title ?? "Bilinmeyen", action: .play(items, index))
+    private func songsMenu(_ songs: [Song]) -> [MenuItem] {
+        songs.enumerated().map { index, song in
+            MenuItem(title: song.title, action: .play(songs, index))
         }
-    }
-}
-
-/// Wraps the system music player so playback keeps going and shows on the lock screen.
-final class PlayerController: ObservableObject {
-    private let player = MPMusicPlayerController.systemMusicPlayer
-
-    @Published private(set) var item: MPMediaItem?
-    @Published private(set) var isPlaying = false
-    @Published private(set) var elapsed: TimeInterval = 0
-    @Published private(set) var queueIndex = 0
-    @Published private(set) var queueCount = 0
-
-    private var observers: [NSObjectProtocol] = []
-    private var timer: Timer?
-
-    init() {
-        player.beginGeneratingPlaybackNotifications()
-        let center = NotificationCenter.default
-        for name in [Notification.Name.MPMusicPlayerControllerNowPlayingItemDidChange,
-                     .MPMusicPlayerControllerPlaybackStateDidChange] {
-            observers.append(center.addObserver(forName: name, object: player, queue: .main) { [weak self] _ in
-                self?.refresh()
-            })
-        }
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.updateElapsed()
-        }
-        refresh()
-    }
-
-    var duration: TimeInterval { item?.playbackDuration ?? 0 }
-
-    func play(_ items: [MPMediaItem], from index: Int) {
-        guard items.indices.contains(index) else { return }
-        player.shuffleMode = .off
-        player.setQueue(with: MPMediaItemCollection(items: items))
-        player.nowPlayingItem = items[index]
-        queueCount = items.count
-        player.play()
-    }
-
-    func shuffleAll() {
-        let items = (MPMediaQuery.songs().items ?? []).shuffled()
-        guard !items.isEmpty else { return }
-        play(items, from: 0)
-    }
-
-    func togglePlay() {
-        Feedback.tick()
-        isPlaying ? player.pause() : player.play()
-    }
-
-    func pause() {
-        player.pause()
-    }
-
-    func next() {
-        Feedback.tick()
-        player.skipToNextItem()
-    }
-
-    func previous() {
-        Feedback.tick()
-        if player.currentPlaybackTime > 3 {
-            player.skipToBeginning()
-        } else {
-            player.skipToPreviousItem()
-        }
-    }
-
-    private func refresh() {
-        item = player.nowPlayingItem
-        isPlaying = player.playbackState == .playing
-        queueIndex = player.indexOfNowPlayingItem
-        updateElapsed()
-    }
-
-    private func updateElapsed() {
-        let time = player.currentPlaybackTime
-        elapsed = time.isFinite ? time : 0
     }
 }
 
@@ -573,8 +491,7 @@ final class AudioRouteController: ObservableObject {
         ) { [weak self] _ in
             self?.update()
         }
-        // Route-change notifications aren't delivered reliably to an app without an active audio
-        // session (the music plays in the system player), so poll as well.
+        // Route-change notifications only arrive while the app's audio session is active, so poll as well.
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.update() }
         update()
     }
@@ -669,48 +586,5 @@ enum Feedback {
             return nil
         }
         return url
-    }
-}
-
-/// Albums and artists grouped from songs. MPMediaQuery's own album and artist queries leave out
-/// songs with no album/artist tags; like the original iPod, those go under "Bilinmeyen …".
-enum Library {
-    static func albumName(_ item: MPMediaItem?) -> String {
-        nonEmpty(item?.albumTitle) ?? "Bilinmeyen Albüm"
-    }
-
-    static func artistName(_ item: MPMediaItem?) -> String {
-        nonEmpty(item?.albumArtist) ?? nonEmpty(item?.artist) ?? "Bilinmeyen Sanatçı"
-    }
-
-    static func albums(of songs: [MPMediaItem]) -> [MPMediaItemCollection] {
-        group(songs, key: { nonEmpty($0.albumTitle) == nil ? nil : "\($0.albumPersistentID)" }, sortedBy: albumName)
-    }
-
-    static func artists(of songs: [MPMediaItem]) -> [MPMediaItemCollection] {
-        group(songs, key: { (nonEmpty($0.albumArtist) ?? nonEmpty($0.artist))?.lowercased() }, sortedBy: artistName)
-    }
-
-    /// Groups songs by `key` (nil = unknown), sorted by name with the unknown group last.
-    private static func group(_ songs: [MPMediaItem], key: (MPMediaItem) -> String?,
-                              sortedBy name: (MPMediaItem?) -> String) -> [MPMediaItemCollection] {
-        var groups: [String: [MPMediaItem]] = [:]
-        var unknown: [MPMediaItem] = []
-        for song in songs {
-            if let key = key(song) {
-                groups[key, default: []].append(song)
-            } else {
-                unknown.append(song)
-            }
-        }
-        var collections = groups.values.map(MPMediaItemCollection.init(items:))
-            .sorted { name($0.representativeItem).localizedCompare(name($1.representativeItem)) == .orderedAscending }
-        if !unknown.isEmpty { collections.append(MPMediaItemCollection(items: unknown)) }
-        return collections
-    }
-
-    private static func nonEmpty(_ text: String?) -> String? {
-        guard let text = text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return nil }
-        return text
     }
 }

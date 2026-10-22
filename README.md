@@ -26,6 +26,13 @@ Both packages install under `/var/jb`, so they only run while the phone is jailb
 
 ## Adding music
 
+**Over Wi-Fi (preferred):** the phone app plays its own folder `/var/mobile/Media/iPodMuzik` alongside the
+Finder-synced library, and announces itself over Bonjour (`_ipodmuzik._tcp`). The iPod Müzik Mac app finds
+it on the same network, tags the dropped MP3s and copies them in over SSH ("iPod'a Gönder"); new songs show
+up on the iPod within seconds.
+
+**Via Finder sync:**
+
 `Muzik/muzik.sh` tags MP3s converted from YouTube (title, artist, album, year, genre, cover from the
 iTunes Search API, whichever order the file name uses) and adds them to the Music app; then sync the
 iPhone from Finder. `--deneme` previews, `--evet` skips the questions. With no arguments it scans ~/Downloads and moves
