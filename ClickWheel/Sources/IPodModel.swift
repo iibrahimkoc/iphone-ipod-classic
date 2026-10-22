@@ -17,12 +17,14 @@ enum MenuAction {
 /// Lists rebuilt from live system state on every render.
 enum LiveList {
     case settings
+    case battery
     case bluetooth
     case wifi
 
     var title: String {
         switch self {
         case .settings: return "Ayarlar"
+        case .battery: return "Pil"
         case .bluetooth: return "Bluetooth"
         case .wifi: return "Wi-Fi"
         }
@@ -174,6 +176,7 @@ final class IPodModel: ObservableObject {
             let items: [MenuItem]
             switch kind {
             case .settings: items = settingsItems()
+            case .battery: items = batteryItems()
             case .bluetooth: items = bluetoothItems()
             case .wifi: items = wifiItems()
             }
@@ -308,6 +311,7 @@ final class IPodModel: ObservableObject {
             stack.append(.live(kind, selection: 0, top: 0))
             switch kind {
             case .settings: airplane.refresh()
+            case .battery: break
             case .bluetooth: bluetooth.startScanning()
             case .wifi: wifi.startScanning()
             }
@@ -322,7 +326,7 @@ final class IPodModel: ObservableObject {
         guard stack.count > 1 else { return }
         if case .live(let kind, _, _) = stack.removeLast() {
             switch kind {
-            case .settings: break
+            case .settings, .battery: break
             case .bluetooth: bluetooth.stopScanning()
             case .wifi: wifi.stopScanning()
             }
@@ -385,10 +389,39 @@ final class IPodModel: ObservableObject {
         items.append(MenuItem(title: "Uyku Zamanlayıcısı", action: .push("Uyku Zamanlayıcısı") { [unowned self] in
             self.sleepTimerItems()
         }, detail: sleepTimer.remainingMinutes.map { "\($0) dk" } ?? "Kapalı"))
+        items.append(MenuItem(title: "Pil", action: .live(.battery), detail: batterySummary))
         items.append(MenuItem(title: "Tık Sesi", action: .clickVolume))
-        items.append(MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
-                              detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"))
         return items
+    }
+
+    /// "%64 · ~7 sa" for the Settings row.
+    private var batterySummary: String {
+        guard battery.level >= 0 else { return "" }
+        let percent = "%\(Int((battery.level * 100).rounded()))"
+        guard let estimate = battery.estimate, !battery.charging else { return percent }
+        return "\(percent) · ~\(Int(estimate / 3600)) sa"
+    }
+
+    private func batteryItems() -> [MenuItem] {
+        let nothing = MenuAction.run {}
+        let level = battery.level >= 0 ? "%\(Int((battery.level * 100).rounded()))" : "?"
+        let estimate = battery.estimate.map(Self.duration) ?? "Hesaplanıyor…"
+        return [
+            MenuItem(title: "Şarj", action: nothing, detail: level),
+            MenuItem(title: "Durum", action: nothing, detail: battery.charging ? "Şarj oluyor" : "Pilde"),
+            MenuItem(title: battery.charging ? "Dolmasına" : "Tahmini süre", action: nothing, detail: estimate),
+            MenuItem(title: "Düşük Güç Modu", action: .run {
+                LowPowerMode.set(!ProcessInfo.processInfo.isLowPowerModeEnabled)
+            }, detail: ProcessInfo.processInfo.isLowPowerModeEnabled ? "Açık" : "Kapalı"),
+            MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
+                     detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"),
+        ]
+    }
+
+    /// "7 sa 20 dk" / "45 dk".
+    private static func duration(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        return minutes >= 60 ? "~\(minutes / 60) sa \(minutes % 60) dk" : "~\(max(minutes, 1)) dk"
     }
 
     /// Choosing an entry starts the timer (or turns it off) and goes back to Settings.

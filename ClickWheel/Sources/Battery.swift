@@ -27,15 +27,61 @@ final class BatteryMonitor: ObservableObject {
     private var warnedThreshold = 100
     private var hideWarning: DispatchWorkItem?
     private var observers: [NSObjectProtocol] = []
+    private var sampleTimer: Timer?
+
+    /// Battery readings of the current charge or discharge, for the time estimate. Persisted so a
+    /// relaunch doesn't start the estimate over.
+    private var samples: [(date: Date, level: Float)] = BatteryMonitor.loadSamples()
+    private static let samplesKey = "batterySamples"
+    private static let estimateWindow: TimeInterval = 2 * 3600
 
     init() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         for name in [UIDevice.batteryLevelDidChangeNotification, UIDevice.batteryStateDidChangeNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.update()
+                self?.recordSample()
             })
         }
+        sampleTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in self?.recordSample() }
         update()
+        recordSample()
+    }
+
+    // MARK: Time estimate
+
+    /// Seconds until empty (discharging) or full (charging), from the rate over the last two
+    /// hours; nil until there are at least 15 minutes and a 2 % change to go on.
+    var estimate: TimeInterval? {
+        guard simulation == nil, level >= 0, let first = samples.first, let last = samples.last else { return nil }
+        let span = last.date.timeIntervalSince(first.date)
+        let change = abs(last.level - first.level)
+        guard span >= 15 * 60, change >= 0.02 else { return nil }
+        let perSecond = Double(change) / span
+        return Double(charging ? 1 - level : level) / perSecond
+    }
+
+    private func recordSample() {
+        guard simulation == nil else { return }
+        let device = UIDevice.current
+        let level = device.batteryLevel
+        guard level >= 0 else { return }
+        let isCharging = device.batteryState == .charging || device.batteryState == .full
+        // A new series starts whenever the phone is plugged in or unplugged.
+        if let lastCharging = UserDefaults.standard.object(forKey: "batterySamplesCharging") as? Bool,
+           lastCharging != isCharging {
+            samples = []
+        }
+        UserDefaults.standard.set(isCharging, forKey: "batterySamplesCharging")
+        let now = Date()
+        samples.append((now, level))
+        samples.removeAll { now.timeIntervalSince($0.date) > Self.estimateWindow }
+        UserDefaults.standard.set(samples.map { [$0.date.timeIntervalSince1970, Double($0.level)] }, forKey: Self.samplesKey)
+    }
+
+    private static func loadSamples() -> [(date: Date, level: Float)] {
+        let stored = UserDefaults.standard.array(forKey: samplesKey) as? [[Double]] ?? []
+        return stored.compactMap { $0.count == 2 ? (Date(timeIntervalSince1970: $0[0]), Float($0[1])) : nil }
     }
 
     var isLow: Bool { level >= 0 && level <= 0.20 && !charging }
