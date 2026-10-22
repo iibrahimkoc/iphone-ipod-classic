@@ -5,3 +5,5 @@ build/
 *.deb
 Tweak/probe/
 .venv/
+Muzik/App/build/
+Muzik/App/*.xcodeproj/

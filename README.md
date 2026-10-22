@@ -31,8 +31,9 @@ iTunes Search API, whichever order the file name uses) and adds them to the Musi
 iPhone from Finder. `--deneme` previews, `--evet` skips the questions. With no arguments it scans ~/Downloads and moves
 processed files to `~/Downloads/iPod-eklendi/`.
 
-`Muzik/build-app.sh` builds **iPod Müzik.app** in ~/Applications: drop MP3s on its icon to do the same
-without the terminal.
+`Muzik/build-app.sh` builds the **iPod Müzik** Mac app (`Muzik/App`, SwiftUI) into ~/Applications: drag MP3s
+into its window, check the found title/artist/album/cover, drop more, then press **Yükle**. It drives
+`muzik.sh --json` / `--uygula`.
 
 ## After a reboot
 

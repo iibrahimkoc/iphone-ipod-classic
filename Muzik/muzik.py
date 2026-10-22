@@ -7,6 +7,11 @@ carry noise like "(320k)", so the whole cleaned name is searched and the best ma
 Usage: muzik.sh [--deneme] [--evet] [files or folders...]   (default: ~/Downloads)
   --deneme  only show what would happen
   --evet    accept every match without asking
+
+For the iPod Müzik app:
+  muzik.sh --json FILE...   prints [{"path", "source", "info"}] without changing anything
+  muzik.sh --uygula         reads [{"path", "info"}] on stdin, tags and adds each to Music,
+                            prints [{"path", "ok", "error"}]
 """
 import json
 import re
@@ -106,7 +111,43 @@ def collect(args):
     return files
 
 
+INFO_KEYS = ("trackName", "artistName", "collectionName", "artworkUrl100", "releaseDate",
+             "primaryGenreName", "trackNumber", "trackCount")
+
+
+def json_lookup(paths):
+    out = []
+    for path in paths:
+        parts = clean_name(path)
+        try:
+            found = search(parts)
+        except OSError:
+            found = None
+        info = found or guess(parts)
+        out.append({"path": str(path), "source": "itunes" if found else "guess",
+                    "info": {k: info[k] for k in INFO_KEYS if k in info}})
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def json_apply():
+    out = []
+    for entry in json.load(sys.stdin):
+        try:
+            write_tags(entry["path"], entry["info"])
+            add_to_music(entry["path"])
+            out.append({"path": entry["path"], "ok": True})
+        except Exception as error:  # reported per file to the app
+            out.append({"path": entry["path"], "ok": False, "error": str(error)})
+    print(json.dumps(out, ensure_ascii=False))
+
+
 def main():
+    if "--uygula" in sys.argv:
+        json_apply()
+        return
+    if "--json" in sys.argv:
+        json_lookup([Path(a).expanduser() for a in sys.argv[1:] if not a.startswith("--")])
+        return
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     dry_run, accept_all = "--deneme" in flags, "--evet" in flags
     given = [a for a in sys.argv[1:] if not a.startswith("--")]
