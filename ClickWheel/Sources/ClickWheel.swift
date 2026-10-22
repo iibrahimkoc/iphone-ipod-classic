@@ -2,9 +2,13 @@ import SwiftUI
 
 /// A touch click wheel: dragging around the ring scrolls, tapping the ring's
 /// quadrants acts as MENU / ⏭ / ⏯ / ⏮, and tapping the center selects.
+/// Holding the center calls `onHold`; if it took the hold, sliding the finger out onto the ring
+/// scrolls, and letting go selects nothing.
 struct ClickWheel: View {
     var onScroll: (Int) -> Void
     var onSelect: () -> Void
+    /// Returns false when the screen has no use for a hold, so letting go selects as a tap would.
+    var onHold: () -> Bool = { false }
     var onMenu: () -> Void
     var onPlayPause: () -> Void
     var onNext: () -> Void
@@ -17,6 +21,8 @@ struct ClickWheel: View {
     @State private var accumulated = 0.0
     @State private var moved = false
     @State private var pressedCenter = false
+    @State private var holdTimer: DispatchWorkItem?
+    @State private var held = false
 
     var body: some View {
         GeometryReader { geo in
@@ -62,8 +68,16 @@ struct ClickWheel: View {
         let start = value.startLocation
         let startedInCenter = hypot(start.x - center.x, start.y - center.y) < inner
         pressedCenter = startedInCenter
-        if hypot(value.translation.width, value.translation.height) > 8 { moved = true }
-        if startedInCenter { return }
+        if startedInCenter && holdTimer == nil && !held && !moved {
+            let work = DispatchWorkItem { held = onHold() }
+            holdTimer = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        }
+        if hypot(value.translation.width, value.translation.height) > 8 && !held {
+            moved = true
+            holdTimer?.cancel()
+        }
+        if startedInCenter && !held { return }
 
         let dx = value.location.x - center.x
         let dy = value.location.y - center.y
@@ -97,8 +111,11 @@ struct ClickWheel: View {
             accumulated = 0
             moved = false
             pressedCenter = false
+            holdTimer?.cancel()
+            holdTimer = nil
+            held = false
         }
-        guard !moved else { return }
+        guard !moved, !held else { return }
 
         let dx = value.startLocation.x - center.x
         let dy = value.startLocation.y - center.y

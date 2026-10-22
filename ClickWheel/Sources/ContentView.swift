@@ -20,6 +20,7 @@ struct ContentView: View {
                 ClickWheel(
                     onScroll: model.scroll,
                     onSelect: model.select,
+                    onHold: model.hold,
                     onMenu: model.menu,
                     onPlayPause: model.player.togglePlay,
                     onNext: model.player.next,

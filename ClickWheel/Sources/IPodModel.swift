@@ -77,10 +77,13 @@ enum Screen {
     case game
 }
 
-/// What the bar at the bottom of Now Playing shows; the center button cycles through them,
-/// and the wheel adjusts the one on screen (volume for the progress bar).
-enum NowPlayingMode: CaseIterable {
+/// What the bar at the bottom of Now Playing shows; the center button cycles through progress,
+/// shuffle and repeat, holding it opens the rating, and the wheel adjusts the one on screen
+/// (volume for the progress bar).
+enum NowPlayingMode {
     case progress, rating, shuffle, repeatMode
+
+    static let cycle: [NowPlayingMode] = [.progress, .shuffle, .repeatMode]
 }
 
 /// What the screen's swipe gestures (or the wheel on Now Playing) are adjusting.
@@ -327,8 +330,9 @@ final class IPodModel: ObservableObject {
         if case .game = current { return }
         if case .nowPlaying = current {
             Feedback.tick()
-            let modes = NowPlayingMode.allCases
-            nowPlayingMode = modes[(modes.firstIndex(of: nowPlayingMode)! + 1) % modes.count]
+            // From the rating, a tap goes back to the progress bar.
+            let modes = NowPlayingMode.cycle
+            nowPlayingMode = modes.firstIndex(of: nowPlayingMode).map { modes[($0 + 1) % modes.count] } ?? .progress
             return
         }
         if case .coverFlow(let index) = current {
@@ -368,6 +372,15 @@ final class IPodModel: ObservableObject {
         case .run(let run):
             run()
         }
+    }
+
+    /// Holding the center on Now Playing opens the rating; the finger can slide onto the ring to rate.
+    func hold() -> Bool {
+        if consumeWarning() { return true }
+        guard case .nowPlaying = current, player.item != nil else { return false }
+        Feedback.tick()
+        nowPlayingMode = .rating
+        return true
     }
 
     func menu() {
