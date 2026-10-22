@@ -16,7 +16,7 @@ struct iPodMuzikApp: App {
 /// LoginItem) the app gets "--gizli" and doesn't show the window.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let phone = Phone()
-    private let nowPlaying = MacNowPlaying(phone: AppDelegate.phone)
+    static let macAudio = MacAudio()
 
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
         statusItem = item
+        _ = Self.macAudio  // starts watching the Mac's sound now, not at the first key press
         VolumeKeys.update()
 
         if !CommandLine.arguments.contains("--gizli") { openMain() }

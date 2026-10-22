@@ -24,7 +24,11 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
     }
 
     @Published private(set) var name: String?
-    @Published private(set) var nowPlaying: NowPlaying?
+    @Published private(set) var nowPlaying: NowPlaying? {
+        didSet { if nowPlaying?.playing == true && oldValue?.playing != true { lastStarted = Date() } }
+    }
+    /// When the iPod last started playing (as the status showed it); distantPast if not since launch.
+    private(set) var lastStarted = Date.distantPast
     /// Set while the menu bar remote is open, so the status is read more often while it is seen.
     var watching = false {
         didSet { if watching { refreshStatus() } }
@@ -47,7 +51,7 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         browser.delegate = self
         browser.searchForServices(ofType: "_ipodmuzik._tcp.", inDomain: "local.")
         probeTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.probe() }
-        // Always read (the Mac's Now Playing follows it), every 1.5 s while the remote is open, else every 4.5 s.
+        // Always read (the Mac's keys follow it), every 1.5 s while the remote is open, else every 4.5 s.
         var tick = 0
         statusTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             tick += 1

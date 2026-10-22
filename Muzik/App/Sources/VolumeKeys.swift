@@ -1,10 +1,9 @@
 import AppKit
 import os
 
-/// "Mac ses tuşları iPod'da": while the iPod is playing, the Mac's volume up/down and mute keys
-/// change the iPod's volume instead of the Mac's; when it is paused they are the Mac's again.
-/// Play/pause, next and previous are left to macOS, which sends them to the app in Now Playing
-/// (see MacNowPlaying), so they work for the Mac's own players too. Catching the keys takes an event tap, so the app has to be
+/// "Mac tuşları iPod'da": the Mac's media and volume keys go to whichever played last, the iPod
+/// or the Mac itself (see `toPhone`), like macOS does between its own apps. Catching the keys
+/// takes an event tap, so the app has to be
 /// allowed under Privacy & Security → Accessibility (again after every rebuild: the ad-hoc
 /// signature changes).
 enum VolumeKeys {
@@ -53,7 +52,19 @@ enum VolumeKeys {
         CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
     }
 
-    /// Swallows the volume keys and turns them into iPod commands; everything else passes through.
+    /// The iPod gets the keys when it started playing after the Mac's own sound did. Paused, it
+    /// keeps play/pause unless the Mac has the AirPods (then the Mac's player is the one meant);
+    /// the volume keys only go to it while it plays.
+    private static func toPhone(volume: Bool) -> Bool {
+        let phone = AppDelegate.phone, mac = AppDelegate.macAudio
+        guard phone.found, let status = phone.nowPlaying, !status.title.isEmpty else { return false }
+        let phoneIsLast = phone.lastStarted >= mac.lastStarted
+        if status.playing { return phoneIsLast || !mac.playing }
+        return !volume && phoneIsLast && !mac.playing && !MacAudio.bluetoothOutput
+    }
+
+    /// Swallows the volume and media keys meant for the iPod and turns them into its commands;
+    /// everything else passes through.
     private static func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -63,11 +74,11 @@ enum VolumeKeys {
         guard let key = NSEvent(cgEvent: event), key.subtype.rawValue == 8 else {
             return Unmanaged.passUnretained(event)
         }
-        guard phone.found, phone.nowPlaying?.playing == true else {
-            log.notice("key passed on: iPod not playing")
+        let code = (key.data1 & 0xFFFF0000) >> 16
+        guard [0, 1, 7, 16, 17, 18, 19, 20].contains(code), toPhone(volume: code <= 7) else {
+            log.notice("key \(code) passed on to the Mac")
             return Unmanaged.passUnretained(event)
         }
-        let code = (key.data1 & 0xFFFF0000) >> 16
         let pressed = (key.data1 & 0xFF00) >> 8 == 0x0A
         let repeated = key.data1 & 1 != 0
         log.notice("key \(code) pressed \(pressed) repeat \(repeated)")
@@ -75,6 +86,9 @@ enum VolumeKeys {
         case 0: if pressed { phone.stepVolume(1) }   // NX_KEYTYPE_SOUND_UP
         case 1: if pressed { phone.stepVolume(-1) }  // NX_KEYTYPE_SOUND_DOWN
         case 7: if pressed && !repeated { phone.toggleMute() }  // NX_KEYTYPE_MUTE
+        case 16: if pressed && !repeated { phone.command("toggle") }  // NX_KEYTYPE_PLAY
+        case 17, 19: if pressed && !repeated { phone.command("next") }  // NX_KEYTYPE_NEXT, _FAST
+        case 18, 20: if pressed && !repeated { phone.command("prev") }  // NX_KEYTYPE_PREVIOUS, _REWIND
         default: return Unmanaged.passUnretained(event)
         }
         return nil

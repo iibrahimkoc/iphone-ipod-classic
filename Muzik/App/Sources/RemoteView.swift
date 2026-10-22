@@ -81,7 +81,7 @@ struct RemoteView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .onChange(of: startAtLogin) { LoginItem.enabled = $0 }
-            Toggle("Mac ses tuşları iPod'da (çalarken)", isOn: $volumeKeys)
+            Toggle("Mac ses ve müzik tuşları iPod'da", isOn: $volumeKeys)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .onChange(of: volumeKeys) { VolumeKeys.enabled = $0 }
