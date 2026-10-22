@@ -229,10 +229,26 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
     /// Where the songs are, for muzik.sh's --ipod-oku and --ipod-yaz.
     var target: (host: String, folder: String)? { host.map { ($0, folder) } }
 
-    /// Copies `file` into the iPod's folder as `name`. It is written as a hidden ".part" file
-    /// first, so the phone only picks it up once complete (and shows "Müzik alınıyor…" meanwhile).
-    func send(_ file: URL, as name: String) async throws {
+    /// The iPod app's game folders, by file extension (see Console in the app's Emulator.swift).
+    static let gameFolders: [String: String] = {
+        var folders: [String: String] = [:]
+        for ext in ["nes", "fds", "unf", "unif"] { folders[ext] = "NES" }
+        for ext in ["md", "gen", "bin", "smd", "68k", "sgd", "sms", "gg"] { folders[ext] = "MegaDrive" }
+        folders["wad"] = "Doom"
+        return folders
+    }()
+
+    /// Where a game file goes on the phone, or nil if it isn't one.
+    static func gameFolder(for file: URL) -> String? {
+        gameFolders[file.pathExtension.lowercased()].map { "/var/mobile/Media/iPodOyun/\($0)" }
+    }
+
+    /// Copies `file` into the iPod's music folder (or `folder`) as `name`. It is written as a hidden
+    /// ".part" file first, so the phone only picks it up once complete (and shows "Müzik alınıyor…"
+    /// meanwhile).
+    func send(_ file: URL, as name: String, to folder: String? = nil) async throws {
         guard let host = host else { throw CocoaError(.fileNoSuchFile) }
+        let folder = folder ?? self.folder
         let final = "\(folder)/\(name)"
         let part = "\(folder)/.\(name).part"
         let command = "mkdir -p \(quote(folder)) && cat > \(quote(part)) && mv \(quote(part)) \(quote(final))"

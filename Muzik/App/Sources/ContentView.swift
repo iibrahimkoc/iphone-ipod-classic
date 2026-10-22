@@ -39,6 +39,8 @@ struct ContentView: View {
     @State private var singleAlbum = false
     @State private var albumName = "Piyano"
     @State private var address = ""
+    /// What happened to the games dropped in, which go straight to the iPod's game folders.
+    @State private var gameStatus: String?
 
     private var readyCount: Int { tracks.filter { $0.info != nil || $0.retryInfo != nil }.count }
     private var searching: Bool { tracks.contains { if case .searching = $0.state { return true }; return false } }
@@ -54,6 +56,18 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let status = gameStatus {
+                HStack {
+                    Image(systemName: "gamecontroller")
+                    Text(status).lineLimit(2)
+                    Spacer()
+                    Button { gameStatus = nil } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless)
+                }
+                .font(.callout)
+                .padding(10)
+                .background(Color.accentColor.opacity(0.12))
+            }
             if tracks.isEmpty {
                 emptyState
             } else {
@@ -89,6 +103,10 @@ struct ContentView: View {
                 .font(.title2.weight(.semibold))
             Text("Şarkı adı, sanatçı, albüm ve kapak otomatik bulunur.")
                 .foregroundStyle(.secondary)
+            Text("Oyunlar da olur: .nes, .md, .wad dosyaları doğrudan iPod'un Oyunlar klasörüne gider.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Button("Dosya Seç…", action: choose)
             Button("iPod'daki şarkıları düzenle…", action: openLibrary)
                 .buttonStyle(.link)
@@ -199,13 +217,16 @@ struct ContentView: View {
 
     private func choose() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.mp3]
+        panel.allowedContentTypes = [.mp3] + Phone.gameFolders.keys.compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
         if panel.runModal() == .OK { panel.urls.forEach(add) }
     }
 
     private func add(_ url: URL) {
+        if let folder = Phone.gameFolder(for: url) {
+            return sendGame(url, to: folder)
+        }
         if url.hasDirectoryPath {
             let files = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
             files.filter { $0.pathExtension.lowercased() == "mp3" }.sorted { $0.path < $1.path }.forEach(add)
@@ -223,6 +244,23 @@ struct ContentView: View {
                 state = .failed("Aranamadı")
             }
             update(track.id, state)
+        }
+    }
+
+    private func sendGame(_ file: URL, to folder: String) {
+        let name = file.lastPathComponent
+        guard phone.found else {
+            gameStatus = "\(name) gönderilemedi: iPod bulunamadı."
+            return
+        }
+        gameStatus = "\(name) gönderiliyor…"
+        Task {
+            do {
+                try await phone.send(file, as: name, to: folder)
+                gameStatus = "\(name) iPod'a gönderildi: Oyunlar › \((folder as NSString).lastPathComponent)"
+            } catch {
+                gameStatus = "\(name) gönderilemedi (iPod açık ve aynı Wi-Fi'de mi?)"
+            }
         }
     }
 
