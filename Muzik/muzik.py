@@ -128,7 +128,7 @@ def read_tags(path):
     if not (text("TIT2") and text("TPE1")):
         return None
     info = {"trackName": text("TIT2"), "artistName": text("TPE1"),
-            "collectionName": text("TALB") or f"{text('TIT2')} - Single"}
+            "collectionName": text("TALB") or f"{text('TIT2')} - Single", "noAlbum": not text("TALB")}
     if text("TPE2"):
         info["albumArtist"] = text("TPE2")
     number, _, count = text("TRCK").partition("/")
@@ -149,8 +149,12 @@ def json_lookup(paths):
         except OSError:
             found = None
         if tagged:
-            # Keep the file's names; iTunes only adds the cover, year and genre.
-            extra = {k: found[k] for k in ("artworkUrl100", "releaseDate", "primaryGenreName") if found and k in found}
+            # Keep the file's names; iTunes only adds the cover, year and genre,
+            # and the album when the file has none.
+            keys = ["artworkUrl100", "releaseDate", "primaryGenreName"]
+            if tagged.get("noAlbum"):
+                keys += ["collectionName", "trackNumber", "trackCount"]
+            extra = {k: found[k] for k in keys if found and k in found}
             info, source = {**tagged, **extra}, "tags"
         else:
             info, source = found or guess(parts), "itunes" if found else "guess"
