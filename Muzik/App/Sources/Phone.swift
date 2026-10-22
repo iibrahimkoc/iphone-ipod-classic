@@ -141,6 +141,9 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
 
     var found: Bool { host != nil }
 
+    /// Where the songs are, for muzik.sh's --ipod-oku and --ipod-yaz.
+    var target: (host: String, folder: String)? { host.map { ($0, folder) } }
+
     /// Copies `file` into the iPod's folder as `name`. It is written as a hidden ".part" file
     /// first, so the phone only picks it up once complete (and shows "Müzik alınıyor…" meanwhile).
     func send(_ file: URL, as name: String) async throws {

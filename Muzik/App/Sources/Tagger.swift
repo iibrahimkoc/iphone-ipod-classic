@@ -36,6 +36,50 @@ enum Tagger {
         let error: String?
     }
 
+    /// A song in the iPod's music folder, as `muzik.sh --ipod-oku` reads it.
+    struct PhoneSong: Codable, Identifiable, Equatable {
+        /// The file name on the phone.
+        let name: String
+        var title: String
+        var artist: String
+        var album: String
+        var albumArtist: String
+        var track: Int
+        /// A copy of the cover in the cache folder.
+        var cover: String?
+
+        var id: String { name }
+    }
+
+    /// A changed song for `--ipod-yaz`; the cover is only sent when it was changed.
+    struct PhoneEdit: Encodable {
+        let name, title, artist, album, albumArtist: String
+        let track, trackCount: Int
+        let cover: String?
+
+        init(song: PhoneSong, trackCount: Int, newCover: Bool) {
+            (name, title, artist, album, albumArtist) = (song.name, song.title, song.artist, song.album, song.albumArtist)
+            (track, self.trackCount) = (song.track, trackCount)
+            cover = newCover ? song.cover : nil
+        }
+    }
+
+    private struct PhoneJob: Encodable {
+        let host, folder: String
+        let songs: [PhoneEdit]
+        let delete: [String]
+    }
+
+    static func phoneSongs(host: String, folder: String) async throws -> [PhoneSong] {
+        try JSONDecoder().decode([PhoneSong].self, from: try await run(["--ipod-oku", host, folder]))
+    }
+
+    /// Rewrites the edited songs' tags on the iPod and deletes `delete` from it.
+    static func saveToPhone(host: String, folder: String, edits: [PhoneEdit], delete: [String]) async throws -> [Result] {
+        let input = try JSONEncoder().encode(PhoneJob(host: host, folder: folder, songs: edits, delete: delete))
+        return try JSONDecoder().decode([Result].self, from: try await run(["--ipod-yaz"], input: input))
+    }
+
     /// The repo's Muzik folder, baked in at build time (see build-app.sh).
     private static var script: URL {
         let folder = Bundle.main.object(forInfoDictionaryKey: "MuzikFolder") as? String ?? ""

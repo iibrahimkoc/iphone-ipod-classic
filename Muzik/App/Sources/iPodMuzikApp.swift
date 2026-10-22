@@ -21,9 +21,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popover = NSPopover()
     private lazy var window: NSWindow = {
         let window = NSWindow(contentViewController: NSHostingController(
-            rootView: ContentView().environmentObject(Self.phone).frame(minWidth: 460, minHeight: 520)))
+            rootView: ContentView(openLibrary: openLibrary).environmentObject(Self.phone)
+                .frame(minWidth: 460, minHeight: 520)))
         window.title = "iPod Müzik"
         window.setContentSize(NSSize(width: 480, height: 560))
+        window.isReleasedWhenClosed = false
+        window.center()
+        return window
+    }()
+    private lazy var libraryWindow: NSWindow = {
+        let window = NSWindow(contentViewController: NSHostingController(
+            rootView: LibraryView().environmentObject(Self.phone).frame(minWidth: 640, minHeight: 480)))
+        window.title = "iPod'daki Şarkılar"
+        window.setContentSize(NSSize(width: 820, height: 600))
         window.isReleasedWhenClosed = false
         window.center()
         return window
@@ -31,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: RemoteView(openMain: openMain).environmentObject(Self.phone))
+        popover.contentViewController = NSHostingController(rootView: RemoteView(openMain: openMain, openLibrary: openLibrary).environmentObject(Self.phone))
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "ipod", accessibilityDescription: "iPod")
@@ -60,6 +70,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.performClose(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Shows the window for fixing the songs already on the iPod.
+    private func openLibrary() {
+        popover.performClose(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        libraryWindow.makeKeyAndOrderFront(nil)
     }
 
     /// Opening the app again (e.g. from Finder) shows the window.

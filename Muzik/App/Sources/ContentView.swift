@@ -29,6 +29,7 @@ struct Track: Identifiable {
 }
 
 struct ContentView: View {
+    let openLibrary: () -> Void
     @EnvironmentObject private var phone: Phone
     @State private var tracks: [Track] = []
     @State private var dropTargeted = false
@@ -89,6 +90,9 @@ struct ContentView: View {
             Text("Şarkı adı, sanatçı, albüm ve kapak otomatik bulunur.")
                 .foregroundStyle(.secondary)
             Button("Dosya Seç…", action: choose)
+            Button("iPod'daki şarkıları düzenle…", action: openLibrary)
+                .buttonStyle(.link)
+                .padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(

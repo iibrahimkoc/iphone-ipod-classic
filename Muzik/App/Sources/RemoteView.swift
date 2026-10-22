@@ -4,6 +4,7 @@ import SwiftUI
 struct RemoteView: View {
     /// Opens the drag-and-drop window.
     let openMain: () -> Void
+    let openLibrary: () -> Void
     @EnvironmentObject private var phone: Phone
     @State private var volume = 50.0
     @State private var draggingVolume = false
@@ -69,6 +70,10 @@ struct RemoteView: View {
             Divider()
             Button(action: openMain) {
                 Label("Şarkı Gönder…", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            Button(action: openLibrary) {
+                Label("iPod'daki Şarkılar…", systemImage: "music.note.list")
                     .frame(maxWidth: .infinity)
             }
             Toggle("Mac açılınca başlat", isOn: $startAtLogin)
