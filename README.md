@@ -23,3 +23,9 @@ ssh ipod sudo dpkg -i /var/mobile/clickwheel.deb
 ```
 
 Both packages install under `/var/jb`, so they only run while the phone is jailbroken.
+
+## After a reboot
+
+The jailbreak is semi-tethered: after a restart the phone boots stock iOS. Plug it in and run `./kurtar.sh`.
+It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and retrying the known
+"Booting PongoOS…" hang), waits for iOS, and checks that the app, the tweak and SSH are back.
