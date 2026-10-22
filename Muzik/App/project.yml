@@ -16,6 +16,7 @@ targets:
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
         LSApplicationCategoryType: public.app-category.music
+        LSUIElement: true
         NSAppleEventsUsageDescription: "Şarkıları Müzik uygulamasına eklemek için."
         NSLocalNetworkUsageDescription: "Aynı Wi-Fi'deki iPod'u bulup şarkı göndermek için."
         NSBonjourServices: [_ipodmuzik._tcp]

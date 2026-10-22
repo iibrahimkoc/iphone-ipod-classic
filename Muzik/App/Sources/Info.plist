@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.music</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Şarkıları Müzik uygulamasına eklemek için.</string>
 	<key>NSBonjourServices</key>

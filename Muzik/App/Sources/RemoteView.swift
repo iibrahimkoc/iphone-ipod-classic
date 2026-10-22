@@ -67,7 +67,6 @@ struct RemoteView: View {
 
             Divider()
             Button {
-                NSApp.setActivationPolicy(.regular)
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
             } label: {

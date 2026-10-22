@@ -23,15 +23,14 @@ struct iPodMuzikApp: App {
     }
 }
 
-/// Started at login (see LoginItem) the app gets "--gizli": no window and no Dock icon, just
-/// the menu bar remote.
+/// A menu bar app (LSUIElement: no Dock icon). Started at login (see LoginItem) it gets "--gizli"
+/// and closes its window, leaving just the menu bar remote. Switching the activation policy at
+/// runtime instead left the menu bar item unclickable.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard CommandLine.arguments.contains("--gizli") else { return }
-        NSApp.setActivationPolicy(.accessory)
         DispatchQueue.main.async {
-            NSApp.windows.filter { $0.identifier?.rawValue.contains("main") == true || $0.title == "iPod Müzik" }
-                .forEach { $0.close() }
+            NSApp.windows.filter { $0.identifier?.rawValue.contains("main") == true }.forEach { $0.close() }
         }
     }
 
