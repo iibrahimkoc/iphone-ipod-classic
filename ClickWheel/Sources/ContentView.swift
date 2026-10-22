@@ -79,7 +79,7 @@ struct ScreenView: View {
                         hudBar(hud, height: barHeight)
                     } else {
                         TitleBar(title: library.receiving ? "Müzik alınıyor…" : model.title, isPlaying: player.isPlaying, hasItem: player.item != nil,
-                                 output: route.output, headphoneBattery: route.headphoneBattery?.lowest, batteryLevel: battery.level, charging: battery.charging,
+                                 output: route.output, headphoneBattery: route.output == .speaker ? nil : route.headphoneBattery?.lowest, batteryLevel: battery.level, charging: battery.charging,
                                  sleeping: sleepTimer.endDate != nil)
                     }
                 }

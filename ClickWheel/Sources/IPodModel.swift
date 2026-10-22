@@ -442,7 +442,7 @@ final class IPodModel: ObservableObject {
 
     private func headphoneItems() -> [MenuItem] {
         guard let levels = route.headphoneBattery else { return [] }
-        let name = route.output == .airpods ? "AirPods" : "Kulaklık"
+        let name = levels.name.localizedCaseInsensitiveContains("airpods") ? "AirPods" : "Kulaklık"
         let parts = [("Sol", levels.left), ("Sağ", levels.right), ("Kutu", levels.case)]
             .compactMap { title, level in level.map { (title, $0) } }
         if parts.isEmpty, let single = levels.single {
@@ -631,7 +631,9 @@ final class AudioRouteController: ObservableObject {
         } else {
             output = .speaker
         }
-        let levels = output == .speaker ? nil : HeadphoneBattery.read()
+        // Read even on the speaker: with both earbuds back in the open case, audio leaves the
+        // AirPods but that is exactly when the case's level is reported.
+        let levels = HeadphoneBattery.read()
         if levels != headphoneBattery { headphoneBattery = levels }
     }
 }
@@ -640,6 +642,7 @@ final class AudioRouteController: ObservableObject {
 /// Batteries widget. AirPods report each earbud and the case as separate entries.
 enum HeadphoneBattery {
     struct Levels: Equatable {
+        var name = ""
         var left: Int?
         var right: Int?
         var `case`: Int?
@@ -668,12 +671,13 @@ enum HeadphoneBattery {
         for device in devices where !bool(device, "isInternal") {
             let percent = integer(device, "percentCharge")
             guard percent >= 0, let identifier = string(device, "identifier") else { continue }
+            levels.name = string(device, "groupName") ?? levels.name
             if identifier.hasSuffix("-Left") { levels.left = percent }
             else if identifier.hasSuffix("-Right") { levels.right = percent }
             else if identifier.hasSuffix("-Case") { levels.case = percent }
             else { levels.single = percent }
         }
-        return levels == Levels() ? nil : levels
+        return [levels.left, levels.right, levels.case, levels.single].allSatisfy { $0 == nil } ? nil : levels
     }
 
     private static func string(_ object: NSObject, _ selector: String) -> String? {
