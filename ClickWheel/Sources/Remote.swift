@@ -91,6 +91,9 @@ final class MacRemote: ObservableObject {
     @Published private(set) var connected = false
     /// Shown at once when the wheel turns, before the Mac confirms it.
     @Published private(set) var volume = 0.0
+    /// Flipped at once by play/pause, then follows the Mac again.
+    @Published private(set) var playing = false
+    private var toggled = Date.distantPast
 
     private let folder = SongLibrary.folder
     private var timer: Timer?
@@ -112,6 +115,10 @@ final class MacRemote: ObservableObject {
     }
 
     func send(_ command: String) {
+        if command == "toggle" {
+            playing.toggle()
+            toggled = Date()
+        }
         sent += 1
         // Written under another name and then renamed, so the Mac never reads half a command.
         let temp = folder.appendingPathComponent(".mactmp-\(sent)")
@@ -140,5 +147,7 @@ final class MacRemote: ObservableObject {
         connected = Date().timeIntervalSince1970 - new.time < 6
         // While the wheel is turning, the Mac's answer lags behind it.
         if Date().timeIntervalSince(volumeTurned) > 1.5 { volume = Double(new.volume) }
+        // A browser's sound stops a moment after it is paused, so the Mac catches up a little later.
+        if Date().timeIntervalSince(toggled) > 3 { playing = new.playing }
     }
 }

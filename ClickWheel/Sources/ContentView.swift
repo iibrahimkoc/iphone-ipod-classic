@@ -489,6 +489,13 @@ struct MacRemoteView: View {
                     .lineLimit(2)
                 }
                 Spacer(minLength: 0)
+                if remote.connected {
+                    HStack(spacing: 6) {
+                        Image(systemName: remote.playing ? "play.fill" : "pause.fill")
+                        Text(remote.playing ? "Çalıyor" : "Durdu")
+                    }
+                    .font(.system(size: h * 0.07, weight: .semibold))
+                }
                 HStack(spacing: 6) {
                     Image(systemName: remote.status?.muted == true ? "speaker.slash.fill" : "speaker.fill")
                     GeometryReader { bar in
@@ -501,9 +508,6 @@ struct MacRemoteView: View {
                     .frame(height: h * 0.06)
                     Text("\(Int(remote.volume.rounded()))%").font(.system(size: h * 0.06, weight: .semibold))
                 }
-                Text("Teker: ses · Orta: oynat/durdur · ⏮ ⏭: parça")
-                    .font(.system(size: h * 0.055))
-                    .foregroundColor(.gray)
             }
             .foregroundColor(.black)
             .padding(10)

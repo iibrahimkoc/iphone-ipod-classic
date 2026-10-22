@@ -89,7 +89,8 @@ final class MacRemoteLink {
             "title": track?.title ?? "",
             "artist": track?.artist ?? "",
             "app": track?.app ?? "",
-            "playing": AppDelegate.macAudio.playing,
+            // Music and Spotify say whether they play; for anything else, whether the Mac makes sound.
+            "playing": track?.playing ?? AppDelegate.macAudio.playing,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: status, options: .sortedKeys) else { return }
         guard force || data != lastStatus || Date().timeIntervalSince(lastWrite) >= 2 else { return }
@@ -134,6 +135,7 @@ enum MediaKeys {
 enum NowPlayingApps {
     struct Track {
         let title, artist, app: String
+        let playing: Bool
     }
 
     private static let apps = [("com.spotify.client", "Spotify", "Spotify"), ("com.apple.Music", "Music", "Müzik")]
@@ -150,7 +152,7 @@ enum NowPlayingApps {
             guard let result = NSAppleScript(source: source)?.executeAndReturnError(nil).stringValue else { continue }
             let lines = result.components(separatedBy: "\n")
             guard lines.count >= 3 else { continue }
-            let track = Track(title: lines[1], artist: lines[2], app: label)
+            let track = Track(title: lines[1], artist: lines[2], app: label, playing: lines[0] == "playing")
             if lines[0] == "playing" { return track }
             paused = paused ?? track
         }
