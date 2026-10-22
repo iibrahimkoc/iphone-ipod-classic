@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var tracks: [Track] = []
     @State private var dropTargeted = false
     @State private var uploading = false
+    @State private var askingAddress = false
+    @State private var address = ""
 
     private var readyCount: Int { tracks.filter { $0.info != nil }.count }
     private var searching: Bool { tracks.contains { if case .searching = $0.state { return true }; return false } }
@@ -126,12 +128,23 @@ struct ContentView: View {
             if let name = phone.name {
                 Label(name, systemImage: "iphone")
             } else {
-                Label("iPod aranıyor… (aynı Wi-Fi'de olmalı)", systemImage: "iphone.slash")
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Label("iPod aranıyor… (aynı Wi-Fi'de olmalı)", systemImage: "iphone.slash")
+                        .foregroundStyle(.secondary)
+                    Button("Adres gir…") { askingAddress = true }
+                        .buttonStyle(.link)
+                }
             }
         }
         .font(.callout)
         .lineLimit(1)
+        .alert("iPod'un adresi", isPresented: $askingAddress) {
+            TextField("192.168.1.164", text: $address)
+            Button("Bağlan") { phone.add(address: address) }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("iPod'da Ayarlar → Wi-Fi → IP Adresi satırında yazıyor.")
+        }
     }
 
     // MARK: Actions
