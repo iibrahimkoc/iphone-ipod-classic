@@ -9,6 +9,7 @@ enum MenuAction {
     case shuffleAll
     case nowPlaying
     case clickVolume
+    case coverFlow
     case live(LiveList)
     case run(() -> Void)
 }
@@ -65,6 +66,8 @@ enum Screen {
     case list(ListScreen)
     case nowPlaying
     case clickVolume
+    /// Index of the album in front.
+    case coverFlow(Int)
     /// Rebuilt from live state on every render, so only the position is stored.
     case live(LiveList, selection: Int, top: Int)
     case password(PasswordEntry)
@@ -92,6 +95,8 @@ final class IPodModel: ObservableObject {
     let wifi = WiFiController()
     let airplane = AirplaneController()
     let battery = BatteryMonitor()
+    /// Albums for Cover Flow, loaded when it opens.
+    private(set) var albums: [MPMediaItemCollection] = []
     private(set) lazy var route = AudioRouteController(player: player)
     private var hideHUD: DispatchWorkItem?
 
@@ -145,6 +150,7 @@ final class IPodModel: ObservableObject {
         case .list(let list): return list.title
         case .nowPlaying: return "Şimdi Çalıyor"
         case .clickVolume: return "Tık Sesi"
+        case .coverFlow: return "Cover Flow"
         case .live(let kind, _, _): return kind.title
         case .password: return "Şifre"
         }
@@ -216,6 +222,11 @@ final class IPodModel: ObservableObject {
             clickVolume = new
             Feedback.volume = new
             Feedback.tick()
+        case .coverFlow(let index):
+            let new = min(max(index + delta, 0), max(albums.count - 1, 0))
+            guard new != index else { return }
+            stack[stack.count - 1] = .coverFlow(new)
+            Feedback.tick()
         case .password(var entry):
             let count = PasswordEntry.options.count
             entry.index = ((entry.index + delta) % count + count) % count
@@ -241,6 +252,14 @@ final class IPodModel: ObservableObject {
             stack[stack.count - 1] = .password(entry)
             return
         }
+        if case .coverFlow(let index) = current {
+            guard albums.indices.contains(index) else { return }
+            Feedback.tick()
+            let album = albums[index]
+            stack.append(.list(ListScreen(title: album.representativeItem?.albumTitle ?? "Bilinmeyen Albüm",
+                                          items: songsMenu(album.items))))
+            return
+        }
         guard let list = currentList, list.items.indices.contains(list.selection) else { return }
         Feedback.tick()
         switch list.items[list.selection].action {
@@ -256,6 +275,9 @@ final class IPodModel: ObservableObject {
             stack.append(.nowPlaying)
         case .clickVolume:
             stack.append(.clickVolume)
+        case .coverFlow:
+            albums = MPMediaQuery.albums().collections ?? []
+            stack.append(.coverFlow(0))
         case .live(let kind):
             stack.append(.live(kind, selection: 0, top: 0))
             switch kind {
@@ -399,6 +421,7 @@ final class IPodModel: ObservableObject {
 
     private func musicMenu() -> [MenuItem] {
         [
+            MenuItem(title: "Cover Flow", action: .coverFlow),
             MenuItem(title: "Çalma Listeleri", action: .push("Çalma Listeleri") { [unowned self] in self.playlistsMenu() }),
             MenuItem(title: "Sanatçılar", action: .push("Sanatçılar") { [unowned self] in self.artistsMenu() }),
             MenuItem(title: "Albümler", action: .push("Albümler") { [unowned self] in self.albumsMenu(MPMediaQuery.albums()) }),

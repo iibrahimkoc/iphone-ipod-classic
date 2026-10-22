@@ -102,6 +102,8 @@ struct ScreenView: View {
                             NowPlayingView(player: player)
                         case .clickVolume:
                             ClickVolumeView(level: model.clickVolume)
+                        case .coverFlow(let index):
+                            CoverFlowView(albums: model.albums, index: index)
                         }
                     }
                 }
