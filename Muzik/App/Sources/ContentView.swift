@@ -205,7 +205,7 @@ struct ContentView: View {
             let state: Track.State
             do {
                 let lookup = try await Tagger.lookup(url)
-                state = isDuplicate(lookup.info) ? .duplicate : .ready(lookup.info, guessed: lookup.source != "itunes")
+                state = isDuplicate(lookup.info) ? .duplicate : .ready(lookup.info, guessed: lookup.source == "guess")
             } catch {
                 state = .failed("Aranamadı")
             }

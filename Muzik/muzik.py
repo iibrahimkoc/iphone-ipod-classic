@@ -45,7 +45,8 @@ def normalize(text):
 
 def clean_name(path):
     """'Onur ATMACA - Oy Dedim - Onur ATMACA (320k)' -> ['Onur ATMACA', 'Oy Dedim']"""
-    name = NOISE.sub("", path.stem)
+    # A leading track number ("01 - ", "1. ") is not part of the artist or title.
+    name = re.sub(r"^\d{1,3}\s*(\.|\s[-–—]\s)\s*", "", NOISE.sub("", path.stem))
     parts = []
     for part in re.split(r"\s+[-–—|]\s+", name):
         part = part.strip(" -_")
@@ -117,16 +118,43 @@ INFO_KEYS = ("trackName", "artistName", "collectionName", "artworkUrl100", "rele
              "primaryGenreName", "trackNumber", "trackCount", "albumArtist")
 
 
+def read_tags(path):
+    """The file's own title and artist (e.g. set when it was downloaded), or None."""
+    try:
+        tags = ID3(path)
+    except Exception:
+        return None
+    text = lambda key: str(tags[key].text[0]).strip() if key in tags and tags[key].text else ""
+    if not (text("TIT2") and text("TPE1")):
+        return None
+    info = {"trackName": text("TIT2"), "artistName": text("TPE1"),
+            "collectionName": text("TALB") or f"{text('TIT2')} - Single"}
+    if text("TPE2"):
+        info["albumArtist"] = text("TPE2")
+    number, _, count = text("TRCK").partition("/")
+    if number.isdigit():
+        info["trackNumber"] = int(number)
+    if count.isdigit():
+        info["trackCount"] = int(count)
+    return info
+
+
 def json_lookup(paths):
     out = []
     for path in paths:
-        parts = clean_name(path)
+        tagged = read_tags(path)
+        parts = [tagged["artistName"], tagged["trackName"]] if tagged else clean_name(path)
         try:
             found = search(parts)
         except OSError:
             found = None
-        info = found or guess(parts)
-        out.append({"path": str(path), "source": "itunes" if found else "guess",
+        if tagged:
+            # Keep the file's names; iTunes only adds the cover, year and genre.
+            extra = {k: found[k] for k in ("artworkUrl100", "releaseDate", "primaryGenreName") if found and k in found}
+            info, source = {**tagged, **extra}, "tags"
+        else:
+            info, source = found or guess(parts), "itunes" if found else "guess"
+        out.append({"path": str(path), "source": source,
                     "info": {k: info[k] for k in INFO_KEYS if k in info}})
     print(json.dumps(out, ensure_ascii=False))
 
