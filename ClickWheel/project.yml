@@ -1,0 +1,28 @@
+name: ClickWheel
+options:
+  bundleIdPrefix: com.ibrahimkoc
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  ClickWheel:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: iPod
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSAppleMusicUsageDescription: "Müzik kütüphanendeki şarkıları çalmak için."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ibrahimkoc.clickwheel
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
