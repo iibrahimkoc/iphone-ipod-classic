@@ -266,6 +266,10 @@ final class Emulator: NSObject {
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
             data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self).pointee = UnsafePointer(directory)
             return true
+        case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+            guard let data = data else { return false }
+            retro_frontend_log_interface(data.assumingMemoryBound(to: retro_log_callback.self))
+            return true
         case RETRO_ENVIRONMENT_GET_CAN_DUPE:
             data?.assumingMemoryBound(to: Bool.self).pointee = true
             return true
