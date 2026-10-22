@@ -5,6 +5,10 @@ import MediaPlayer
 /// taps), like any player app. macOS hands the media keys to whichever app played last, so while
 /// the iPod plays they control it, and once the Mac plays something itself (Safari, Music…) they
 /// go there instead. When the iPod is gone the entry is cleared.
+///
+/// It never reports "playing", only "paused": AirPods' automatic switching takes a Mac that says
+/// it is playing for one that started audio, pulls the AirPods over from the phone, and the
+/// phone then pauses (its music would otherwise move to the speaker).
 final class MacNowPlaying {
     private let phone: Phone
     private var cancellable: AnyCancellable?
@@ -42,6 +46,6 @@ final class MacNowPlaying {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: status.elapsed,
             MPNowPlayingInfoPropertyPlaybackRate: status.playing ? 1.0 : 0.0,
         ]
-        center.playbackState = status.playing ? .playing : .paused
+        center.playbackState = .paused
     }
 }
