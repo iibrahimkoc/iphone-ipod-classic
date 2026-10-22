@@ -23,9 +23,12 @@ final class BluetoothController: ObservableObject {
         dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager", RTLD_NOW)
         let cls = NSClassFromString("BluetoothManager") as? NSObject.Type
         manager = cls?.perform(NSSelectorFromString("sharedInstance"))?.takeUnretainedValue() as? NSObject
-        observer = NotificationCenter.default.addObserver(forName: nil, object: nil, queue: .main) { [weak self] note in
+        // BluetoothManager posts many differently named notifications, so all are observed. The
+        // filter runs on the posting thread: delivering every notification through the main queue
+        // makes posters wait on the main thread, which deadlocked against SwiftUI's renderer.
+        observer = NotificationCenter.default.addObserver(forName: nil, object: nil, queue: nil) { [weak self] note in
             guard note.name.rawValue.hasPrefix("Bluetooth") else { return }
-            self?.handle(note)
+            DispatchQueue.main.async { self?.handle(note) }
         }
         refresh()
     }
