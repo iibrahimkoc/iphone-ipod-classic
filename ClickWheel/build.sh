@@ -4,7 +4,8 @@
 set -e
 cd "$(dirname "$0")"
 
-# libretro cores for Oyunlar, built once for iOS: Genesis Plus GX (Mega Drive) and PrBoom (Doom).
+# libretro cores for Oyunlar, built once for iOS: Genesis Plus GX (Mega Drive), PrBoom (Doom) and
+# FCEUmm (NES).
 # They are bundled in the app's cores folder and opened with dlopen; both export the same retro_*
 # functions, so they can't be linked in. The Genesis checkout also provides libretro.h.
 IOSSDK="$(xcrun -sdk iphoneos --show-sdk-path)"
@@ -17,6 +18,11 @@ PRBOOM=build/prboom/prboom_libretro_ios.dylib
 if [ ! -f "$PRBOOM" ]; then
     [ -d build/prboom ] || git clone -q --depth 1 https://github.com/libretro/libretro-prboom.git build/prboom
     make -C build/prboom -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 IOSSDK="$IOSSDK" >/dev/null
+fi
+FCEUMM=build/fceumm/fceumm_libretro_ios.dylib
+if [ ! -f "$FCEUMM" ]; then
+    [ -d build/fceumm ] || git clone -q --depth 1 https://github.com/libretro/libretro-fceumm.git build/fceumm
+    make -C build/fceumm -f Makefile.libretro -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 IOSSDK="$IOSSDK" >/dev/null
 fi
 
 xcodegen generate --quiet
@@ -41,7 +47,7 @@ strip "$APP/stockfish"
 ldid -S"$PWD/stockfish.entitlements" "$APP/stockfish"
 
 mkdir -p "$APP/cores"
-for CORE in "$GPGX" "$PRBOOM"; do
+for CORE in "$GPGX" "$PRBOOM" "$FCEUMM"; do
     cp "$CORE" "$APP/cores/"
     ldid -S "$APP/cores/$(basename "$CORE")"
 done
@@ -53,7 +59,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 2.14.2
+Version: 2.15
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc

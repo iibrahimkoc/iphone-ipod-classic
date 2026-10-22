@@ -27,7 +27,7 @@ struct ContentView: View {
                     onPrevious: model.player.previous)
                     .overlay(Group {
                         if case .game = model.current, let game = model.emulator {
-                            GamepadOverlay(center: game.console.center, onChange: model.setPad)
+                            GamepadOverlay(center: game.console.center, outerRing: game.console.outerRing, onChange: model.setPad)
                         }
                     })
                     .frame(width: wheelSize, height: wheelSize)

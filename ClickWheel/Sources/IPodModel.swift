@@ -675,12 +675,17 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Satranç", action: .push("Satranç") { [unowned self] in self.chessMenu() }),
             MenuItem(title: "Doom", action: .push("Doom") { [unowned self] in self.consoleMenu(.doom) }),
             MenuItem(title: "Mega Drive", action: .push("Mega Drive") { [unowned self] in self.consoleMenu(.megaDrive) }),
+            MenuItem(title: "NES", action: .push("NES") { [unowned self] in self.consoleMenu(.nes) }),
         ]
     }
 
     /// The console's games. One with a saved place asks whether to carry on or start over.
     private func consoleMenu(_ console: Console) -> [MenuItem] {
-        console.games().map { game in
+        let games = console.games()
+        guard !games.isEmpty else {
+            return [MenuItem(title: "Oyun yok", action: .run {}, detail: "iPodOyun/\(console.folder.lastPathComponent)")]
+        }
+        return games.map { game in
             let name = console.title(game)
             guard console.hasSave(game) else {
                 return MenuItem(title: name, action: .run { [unowned self] in self.openGame(game, on: console) })

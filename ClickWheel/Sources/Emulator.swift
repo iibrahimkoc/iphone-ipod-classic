@@ -13,6 +13,15 @@ struct Console {
         center: RETRO_DEVICE_ID_JOYPAD_B, leftTap: RETRO_DEVICE_ID_JOYPAD_START, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
         help: "Tekerlek: yön · Orta: zıpla\nEkrana dokun: Start · Uzun bas: çık")
 
+    /// The NES pad: the center is A (jump); pressing near the ring's outer edge also holds B, so
+    /// Mario runs; a tap on the left half is B alone (fireballs), the right half is Start.
+    static let nes = Console(
+        name: "NES", core: "fceumm_libretro_ios.dylib", folder: root.appendingPathComponent("NES"),
+        extensions: ["nes", "fds", "unf", "unif"],
+        center: RETRO_DEVICE_ID_JOYPAD_A, leftTap: RETRO_DEVICE_ID_JOYPAD_B, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
+        outerRing: RETRO_DEVICE_ID_JOYPAD_B,
+        help: "Tekerlek: yürü · Dış kenar: koş · Orta: zıpla\nSol: ateş · Sağ: Start · Uzun bas: çık")
+
     /// PrBoom's classic layout: the D-pad walks and turns, X fires, A uses (doors, switches) and
     /// Start is the menu, where A and X also confirm.
     static let doom = Console(
@@ -32,6 +41,8 @@ struct Console {
     let center: Int32
     let leftTap: Int32
     let rightTap: Int32
+    /// Held as well while a finger is on the outer part of the ring (NES: B, to run).
+    var outerRing: Int32? = nil
     let help: String
 
     /// The games in the folder, by name. prboom.wad is the engine's own data, not a game.
@@ -382,6 +393,7 @@ private final class AudioOutput {
 /// work at once, so running and jumping go together.
 struct GamepadOverlay: UIViewRepresentable {
     let center: Int32
+    var outerRing: Int32? = nil
     let onChange: (UInt32) -> Void
 
     func makeUIView(context: Context) -> GamepadView {
@@ -392,12 +404,14 @@ struct GamepadOverlay: UIViewRepresentable {
 
     func updateUIView(_ view: GamepadView, context: Context) {
         view.centerButton = center
+        view.outerRingButton = outerRing
         view.onChange = onChange
     }
 }
 
 final class GamepadView: UIView {
     var centerButton = RETRO_DEVICE_ID_JOYPAD_B
+    var outerRingButton: Int32?
     var onChange: ((UInt32) -> Void)?
 
     override init(frame: CGRect) {
@@ -426,6 +440,7 @@ final class GamepadView: UIView {
                 press(centerButton)
                 continue
             }
+            if let outer = outerRingButton, distance > Double(size) * 0.36 { press(outer) }
             // Eight 45° sectors, starting with right and going clockwise (screen y grows downward).
             let angle = (atan2(dy, dx) + 2 * .pi + .pi / 8).truncatingRemainder(dividingBy: 2 * .pi)
             switch Int(angle / (.pi / 4)) {
