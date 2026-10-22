@@ -363,10 +363,10 @@ struct NowPlayingView: View {
                         }
                         .frame(height: h * 0.1)
                     case .rating:
-                        // The marks differ in width, so each gets the same box and the bar doesn't shift.
-                        picker("Beğeni", options: ["✕", "—", "♥"],
+                        // SF Symbols at one size, each in the same box, so the marks match and the bar doesn't shift.
+                        picker("Beğeni", options: ["xmark", "minus", "heart.fill"],
                                selected: [Ratings.Rating.disliked, nil, .liked].firstIndex { $0 == ratings.rating(of: item) }!, h: h,
-                               optionWidth: h * 0.1)
+                               symbols: true)
                     case .shuffle:
                         picker("Karıştır", options: ["Kapalı", "Şarkılar"], selected: player.shuffle ? 1 : 0, h: h)
                     case .repeatMode:
@@ -386,14 +386,21 @@ struct NowPlayingView: View {
     }
 
     /// "Karıştır  [Kapalı] Şarkılar": the wheel moves the highlight.
-    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat, optionWidth: CGFloat? = nil) -> some View {
+    /// With `symbols`, the options are SF Symbol names.
+    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat, symbols: Bool = false) -> some View {
         HStack(spacing: 4) {
             Text(title).font(.system(size: h * 0.065, weight: .bold))
             Spacer()
             ForEach(options.indices, id: \.self) { index in
-                Text(options[index])
-                    .font(.system(size: h * 0.06, weight: .semibold))
-                    .frame(width: optionWidth)
+                Group {
+                    if symbols {
+                        Image(systemName: options[index])
+                            .font(.system(size: h * 0.045, weight: .bold))
+                            .frame(width: h * 0.08, height: h * 0.065)
+                    } else {
+                        Text(options[index]).font(.system(size: h * 0.06, weight: .semibold))
+                    }
+                }
                     .foregroundColor(index == selected ? .white : .black)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
