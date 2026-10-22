@@ -5,12 +5,15 @@
 //  - Waking the screen skips the lock screen (only possible when the phone has no passcode).
 //  - The "no SIM card" alert and iOS's own low battery alert are suppressed (the app shows its own).
 //  - The app can turn the screen off (battery quarantine) by posting com.ibrahimkoc.ipod.lock.
+//  - The Mac's play/pause, next and previous arrive as a ".media" file in the music folder and are
+//    sent like the lock screen's buttons, which wakes the app even when iOS has suspended it.
 //  - Escape hatch: 5 quick home presses unlocks everything until the iPod app is reopened or the phone locks.
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <notify.h>
+#import <dlfcn.h>
 
 static NSString *const kAppID = @"com.ibrahimkoc.clickwheel";
 static const NSUInteger kEscapePresses = 5;
@@ -99,6 +102,34 @@ static BOOL isSuppressedAlert(id item) {
         if ([text isKindOfClass:NSString.class] && [text containsString:@"SIM"]) return YES;
     }
     return NO;
+}
+
+// MARK: Media keys from the Mac
+
+static NSString *const kMusicFolder = @"/var/mobile/Media/iPodMuzik";
+static dispatch_source_t mediaSource;
+
+// The Mac writes "toggle", "next" or "prev" to .media; MediaRemote delivers it to the now-playing
+// app (the iPod app), resuming it first if it was suspended while paused.
+static void watchMediaCommands(void) {
+    void *lib = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW);
+    Boolean (*send)(uint32_t, CFDictionaryRef) = lib ? dlsym(lib, "MRMediaRemoteSendCommand") : NULL;
+    if (!send) return;
+    int folder = open(kMusicFolder.fileSystemRepresentation, O_EVTONLY);
+    if (folder < 0) return;
+    mediaSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, folder, DISPATCH_VNODE_WRITE, dispatch_get_main_queue());
+    dispatch_source_set_event_handler(mediaSource, ^{
+        NSString *path = [kMusicFolder stringByAppendingPathComponent:@".media"];
+        NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+        if (!text) return;
+        [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+        // MRMediaRemoteCommand: 2 toggle play/pause, 4 next track, 5 previous track.
+        NSDictionary *commands = @{ @"toggle": @2, @"next": @4, @"prev": @5 };
+        NSNumber *command = commands[[text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]];
+        if (command) send(command.unsignedIntValue, NULL);
+    });
+    dispatch_source_set_cancel_handler(mediaSource, ^{ close(folder); });
+    dispatch_resume(mediaSource);
 }
 
 __attribute__((constructor)) static void init(void) {
@@ -227,6 +258,8 @@ __attribute__((constructor)) static void init(void) {
         SEL lock = NSSelectorFromString(@"_simulateLockButtonPress");
         if ([UIApplication.sharedApplication respondsToSelector:lock]) SEND(void)(UIApplication.sharedApplication, lock);
     });
+
+    watchMediaCommands();
 
     // After a respring the phone is usually unlocked and nothing triggers a launch.
     launchAppSoon(4.0);

@@ -67,11 +67,15 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
 
     // MARK: Remote control
 
-    /// Sends a command to the phone app: toggle, next, prev or "vol <0-100>".
+    /// Sends a command to the phone app: toggle, next, prev or "vol <0-100>". The first three go
+    /// to ".media", which the kiosk tweak in SpringBoard sends like the lock screen's buttons, so
+    /// they reach the app even when iOS has suspended it (paused, screen off); the app reads
+    /// ".command" itself.
     func command(_ command: String) {
         lastUsed = Date()
+        let file = ["toggle", "next", "prev"].contains(command) ? ".media" : ".command"
         let path = "\(folder)/.cmd.tmp"
-        ssh("printf %s \(quote(command)) > \(quote(path)) && mv \(quote(path)) \(quote(folder + "/.command"))") { _ in
+        ssh("printf %s \(quote(command)) > \(quote(path)) && mv \(quote(path)) \(quote(folder + "/" + file))") { _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.refreshStatus() }
         }
     }
