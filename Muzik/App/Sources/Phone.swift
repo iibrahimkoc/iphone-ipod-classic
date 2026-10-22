@@ -68,7 +68,8 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=4", "-o", "StrictHostKeyChecking=accept-new",
                              "-o", "ControlMaster=auto", "-o", "ControlPersist=120",
-                             "-o", "ControlPath=\(NSTemporaryDirectory())ipod-%C",
+                             // The temporary folder's path is too long for the socket name, so use ~/.ssh.
+                             "-o", "ControlPath=\(NSHomeDirectory())/.ssh/ipod-%C",
                              "mobile@\(host)", command]
         let output = Pipe()
         process.standardOutput = output
