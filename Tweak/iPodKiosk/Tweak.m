@@ -3,6 +3,7 @@
 //  - The home button returns to the app instead of the home screen; double/triple/long presses are ignored.
 //  - Control Center, Notification Center and other system gestures are disabled while unlocked.
 //  - Waking the screen skips the lock screen (only possible when the phone has no passcode).
+//  - The app can turn the screen off (battery quarantine) by posting com.ibrahimkoc.ipod.lock.
 //  - Escape hatch: 5 quick home presses unlocks everything until the iPod app is reopened or the phone locks.
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -186,6 +187,13 @@ __attribute__((constructor)) static void init(void) {
                 ((void (*)(id, SEL))singlePressUp)(actions, @selector(performSinglePressUpActions));
             }
         });
+    });
+
+    // The app asks for the screen to be turned off while in battery quarantine.
+    int lockToken;
+    notify_register_dispatch("com.ibrahimkoc.ipod.lock", &lockToken, dispatch_get_main_queue(), ^(int t) {
+        SEL lock = NSSelectorFromString(@"_simulateLockButtonPress");
+        if ([UIApplication.sharedApplication respondsToSelector:lock]) SEND(void)(UIApplication.sharedApplication, lock);
     });
 
     // After a respring the phone is usually unlocked and nothing triggers a launch.

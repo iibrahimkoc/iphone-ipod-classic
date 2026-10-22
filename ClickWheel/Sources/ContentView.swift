@@ -34,6 +34,7 @@ struct ContentView: View {
                            startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea())
         .background(VolumeViewHost(view: model.volume.view).frame(width: 1, height: 1).opacity(0.01))
+        .overlay(QuarantineOverlay(battery: model.battery))
         .statusBarHidden(true)
         .onAppear { model.requestAccess() }
     }
@@ -435,7 +436,7 @@ struct PasswordView: View {
     }
 }
 
-/// iPod-style battery warnings: a small box at 20 % and 10 %, the whole screen at 5 %.
+/// iPod-style low battery warning (20 %).
 struct BatteryWarningView: View {
     let warning: BatteryMonitor.Warning?
     let level: Float
@@ -443,15 +444,14 @@ struct BatteryWarningView: View {
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
-            switch warning {
-            case .low?, .veryLow?:
+            if warning != nil {
                 VStack(spacing: h * 0.04) {
                     Image(systemName: "battery.25")
                         .font(.system(size: h * 0.2))
                         .foregroundColor(.red)
-                    Text(warning == .low ? "Pil Zayıf" : "Pil Çok Zayıf")
+                    Text("Pil Zayıf")
                         .font(.system(size: h * 0.09, weight: .bold))
-                    Text(warning == .low ? "%\(Int((level * 100).rounded())) kaldı · Düşük Güç Modu açık" : "Şarja takın")
+                    Text("%\(Int((level * 100).rounded())) kaldı · Düşük Güç Modu açık")
                         .font(.system(size: h * 0.06))
                         .foregroundColor(Color(white: 0.35))
                 }
@@ -463,22 +463,36 @@ struct BatteryWarningView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .critical?:
-                VStack(spacing: h * 0.05) {
-                    Image(systemName: "battery.0")
-                        .font(.system(size: h * 0.3))
-                        .foregroundColor(.red)
-                    Text("Şarj Edin")
-                        .font(.system(size: h * 0.11, weight: .bold))
-                    Text("Pil biterse jailbreak kapanır.")
-                        .font(.system(size: h * 0.065))
-                        .foregroundColor(Color(white: 0.35))
+            }
+        }
+    }
+}
+
+/// Below 10 % the iPod disappears: a black screen with only the battery level, until charging.
+struct QuarantineOverlay: View {
+    @ObservedObject var battery: BatteryMonitor
+
+    var body: some View {
+        if battery.quarantine {
+            VStack(spacing: 10) {
+                Image(systemName: "battery.0")
+                    .font(.system(size: 44))
+                    .foregroundColor(.red)
+                Text("%\(Int((battery.level * 100).rounded())) · Şarja takın")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Color(white: 0.45))
+                if battery.simulation != nil {
+                    Text("Pil Testi: devam etmek için dokun")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(white: 0.3))
                 }
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.white)
-            case nil:
-                EmptyView()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black.ignoresSafeArea())
+            .contentShape(Rectangle())
+            // In the battery test the wheel is gone, so a tap moves on to the next test state.
+            .onTapGesture {
+                if battery.simulation != nil { battery.cycleSimulation() }
             }
         }
     }

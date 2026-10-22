@@ -1,6 +1,7 @@
 import SwiftUI
 import MediaPlayer
 import AVFoundation
+import notify
 
 enum MenuAction {
     case push(String, () -> [MenuItem])
@@ -94,8 +95,47 @@ final class IPodModel: ObservableObject {
     private(set) lazy var route = AudioRouteController(player: player)
     private var hideHUD: DispatchWorkItem?
 
+    /// What quarantine changed, so charging can put it back.
+    private var preQuarantine: (airplane: Bool, brightness: CGFloat)?
+    private var lockTimer: DispatchWorkItem?
+
     init() {
         stack = [.list(mainMenu())]
+        battery.onQuarantineChange = { [unowned self] on in on ? self.enterQuarantine() : self.leaveQuarantine() }
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) {
+            [unowned self] _ in
+            if self.battery.quarantine { self.scheduleLock() }
+        }
+    }
+
+    // MARK: Battery quarantine
+
+    private func enterQuarantine() {
+        preQuarantine = (airplane.enabled, UIScreen.main.brightness)
+        player.pause()
+        airplane.setEnabled(true)
+        UIScreen.main.brightness = 0.05
+        scheduleLock()
+    }
+
+    private func leaveQuarantine() {
+        lockTimer?.cancel()
+        guard let saved = preQuarantine else { return }
+        preQuarantine = nil
+        if !saved.airplane { airplane.setEnabled(false) }
+        UIScreen.main.brightness = saved.brightness
+        brightness = Double(saved.brightness)
+    }
+
+    /// Asks the kiosk tweak to turn the screen off a few seconds after it was woken.
+    private func scheduleLock() {
+        lockTimer?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard self?.battery.quarantine == true else { return }
+            notify_post("com.ibrahimkoc.ipod.lock")
+        }
+        lockTimer = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
     }
 
     var current: Screen { stack[stack.count - 1] }
@@ -142,7 +182,8 @@ final class IPodModel: ObservableObject {
 
     /// A battery warning on screen takes the next wheel input, like an alert would.
     private func consumeWarning() -> Bool {
-        guard battery.warning == .low || battery.warning == .veryLow else { return false }
+        if battery.quarantine { return true }
+        guard battery.warning != nil else { return false }
         battery.dismissWarning()
         return true
     }

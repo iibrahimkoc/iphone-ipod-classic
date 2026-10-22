@@ -1,22 +1,27 @@
 import UIKit
 
-/// Watches the battery and raises iPod-style warnings at 20 %, 10 % and 5 %. If the battery
-/// runs out the phone shuts down and loses the jailbreak, so the 5 % warning stays up until
-/// the phone is charging. Low Power Mode turns on at 20 % and off again once charged past 80 %.
+/// Watches the battery. At 20 % it shows an iPod-style warning and turns on Low Power Mode.
+/// Below 10 % (not charging) it enters "quarantine": if the battery runs out the phone shuts down
+/// and loses the jailbreak, so the app strips everything back to save power until it is charged.
+/// Low Power Mode turns off again once charged past 80 %.
 final class BatteryMonitor: ObservableObject {
     enum Warning {
-        case low, veryLow, critical
+        case low
     }
 
-    /// "Pil Testi" states that override the real battery so the warnings can be previewed.
+    /// "Pil Testi" states that override the real battery so the behavior can be previewed.
     static let simulations: [(name: String, level: Float, charging: Bool)] = [
-        ("%20", 0.20, false), ("%10", 0.10, false), ("%5", 0.05, false), ("Şarjda", 0.05, true),
+        ("%20", 0.20, false), ("%9", 0.09, false), ("Şarjda", 0.09, true),
     ]
 
     @Published private(set) var level: Float = -1
     @Published private(set) var charging = false
     @Published private(set) var warning: Warning?
     @Published private(set) var simulation: Int?
+    @Published private(set) var quarantine = false {
+        didSet { if quarantine != oldValue { onQuarantineChange?(quarantine) } }
+    }
+    var onQuarantineChange: ((Bool) -> Void)?
 
     /// The lowest threshold already warned about, so each warning shows once per discharge.
     private var warnedThreshold = 100
@@ -46,7 +51,6 @@ final class BatteryMonitor: ObservableObject {
     }
 
     func dismissWarning() {
-        guard warning != nil, warning != .critical else { return }
         warning = nil
     }
 
@@ -64,18 +68,20 @@ final class BatteryMonitor: ObservableObject {
         if charging {
             warning = nil
             warnedThreshold = 100
+            quarantine = false
             if level >= 0.80 && simulation == nil { LowPowerMode.set(false) }
             return
         }
 
-        let threshold = level <= 0.05 ? 5 : level <= 0.10 ? 10 : level <= 0.20 ? 20 : 100
-        if threshold == 5 {
-            warning = .critical
-        } else if threshold < warnedThreshold {
-            show(threshold == 20 ? .low : .veryLow)
-            if threshold == 20 && simulation == nil { LowPowerMode.set(true) }
+        if level < 0.10 {
+            warning = nil
+            quarantine = true
+            if simulation == nil { LowPowerMode.set(true) }
+        } else if level <= 0.20 && warnedThreshold > 20 {
+            show(.low)
+            if simulation == nil { LowPowerMode.set(true) }
+            warnedThreshold = 20
         }
-        warnedThreshold = min(warnedThreshold, threshold)
     }
 
     private func show(_ kind: Warning) {
