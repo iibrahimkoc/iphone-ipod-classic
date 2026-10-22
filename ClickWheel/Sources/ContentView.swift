@@ -107,7 +107,7 @@ struct ScreenView: View {
                         case .password(let entry):
                             PasswordView(entry: entry)
                         case .nowPlaying:
-                            NowPlayingView(player: player, mode: model.nowPlayingMode)
+                            NowPlayingView(player: player, ratings: player.ratings, mode: model.nowPlayingMode)
                         case .clickVolume:
                             ClickVolumeView(level: model.clickVolume)
                         case .coverFlow(let index):
@@ -314,6 +314,7 @@ struct ListView: View {
 
 struct NowPlayingView: View {
     @ObservedObject var player: PlayerController
+    @ObservedObject var ratings: Ratings
     let mode: NowPlayingMode
 
     var body: some View {
@@ -324,6 +325,11 @@ struct NowPlayingView: View {
                     HStack(spacing: 6) {
                         Text(player.queueCount > 0 ? "\(player.queueIndex + 1) / \(player.queueCount)" : " ")
                         Spacer()
+                        switch ratings.rating(of: item) {
+                        case .liked?: Image(systemName: "heart.fill")
+                        case .disliked?: Image(systemName: "hand.thumbsdown.fill")
+                        case nil: EmptyView()
+                        }
                         if player.shuffle { Image(systemName: "shuffle") }
                         if player.repeatMode != .off {
                             Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
@@ -356,6 +362,9 @@ struct NowPlayingView: View {
                             .font(.system(size: h * 0.06, weight: .semibold))
                         }
                         .frame(height: h * 0.1)
+                    case .rating:
+                        picker("Beğeni", options: ["✕", "—", "♥"],
+                               selected: [Ratings.Rating.disliked, nil, .liked].firstIndex { $0 == ratings.rating(of: item) }!, h: h)
                     case .shuffle:
                         picker("Karıştır", options: ["Kapalı", "Şarkılar"], selected: player.shuffle ? 1 : 0, h: h)
                     case .repeatMode:

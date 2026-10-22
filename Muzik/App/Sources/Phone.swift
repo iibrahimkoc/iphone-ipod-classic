@@ -13,6 +13,16 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         let volume: Int
     }
 
+    /// A liked or disliked song, from the phone app's ".ratings.json" (keyed by "file:<name>" for
+    /// the songs in the folder, "lib:<id>" for Finder-synced ones).
+    struct Rating: Decodable {
+        let rating: Int
+        let title: String
+        let artist: String
+
+        var disliked: Bool { rating < 0 }
+    }
+
     @Published private(set) var name: String?
     @Published private(set) var nowPlaying: NowPlaying?
     /// Set while the menu bar remote is open, so the status is only polled when it is seen.
@@ -98,6 +108,14 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         keyVolume = volume
         lastVolumeKey = Date()
         command("vol \(Int(volume.rounded()))")
+    }
+
+    func ratings() async -> [String: Rating] {
+        await withCheckedContinuation { continuation in
+            ssh("cat \(quote(folder + "/.ratings.json")) 2>/dev/null || echo '{}'") { data in
+                continuation.resume(returning: data.flatMap { try? JSONDecoder().decode([String: Rating].self, from: $0) } ?? [:])
+            }
+        }
     }
 
     private func refreshStatus() {

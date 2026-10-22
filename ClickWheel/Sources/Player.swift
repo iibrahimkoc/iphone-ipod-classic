@@ -34,6 +34,9 @@ final class PlayerController: ObservableObject {
     @Published private(set) var queueIndex = 0
     @Published private(set) var queueCount = 0
 
+    /// Liked and disliked songs; every shuffle leans on them.
+    let ratings = Ratings()
+
     private let player = AVPlayer()
     private var queue: [Song] = []
     /// The list as chosen, so turning shuffle off restores its order.
@@ -75,20 +78,28 @@ final class PlayerController: ObservableObject {
         MPMusicPlayerController.systemMusicPlayer.pause()
         original = songs
         // With shuffle on, the chosen song plays first and the rest follow in random order.
-        queue = shuffle ? [songs[index]] + songs.enumerated().filter { $0.offset != index }.map(\.element).shuffled() : songs
-        queueCount = songs.count
-        load(shuffle ? 0 : index)
-        resume()
+        if shuffle {
+            start([songs[index]] + ratings.shuffled(songs.enumerated().filter { $0.offset != index }.map(\.element)), at: 0)
+        } else {
+            start(songs, at: index)
+        }
     }
 
-    /// "Şarkıları Karıştır": the whole library in random order, whatever the shuffle setting.
+    /// "Şarkıları Karıştır": the whole library in random order, whatever the shuffle setting,
+    /// leaning toward liked songs and leaving out disliked ones.
     func shuffleAll(_ songs: [Song]) {
-        guard !songs.isEmpty else { return }
-        play(songs, from: Int.random(in: songs.indices))
-        if !shuffle {
-            queue = [queue[queueIndex]] + songs.filter { $0 !== queue[queueIndex] }.shuffled()
-            queueIndex = 0
-        }
+        let order = ratings.shuffled(songs)
+        guard !order.isEmpty else { return }
+        MPMusicPlayerController.systemMusicPlayer.pause()
+        original = order
+        start(order, at: 0)
+    }
+
+    private func start(_ songs: [Song], at index: Int) {
+        queue = songs
+        queueCount = songs.count
+        load(index)
+        resume()
     }
 
     /// Fades the music out over a few seconds, then pauses (for the sleep timer).
@@ -110,11 +121,13 @@ final class PlayerController: ObservableObject {
     private func reorderQueue() {
         guard let current = item, !original.isEmpty else { return }
         if shuffle {
-            queue = [current] + original.filter { $0 !== current }.shuffled()
+            queue = [current] + ratings.shuffled(original.filter { $0 !== current })
             queueIndex = 0
+            queueCount = queue.count
         } else {
             queue = original
             queueIndex = original.firstIndex { $0 === current } ?? 0
+            queueCount = queue.count
         }
     }
 
@@ -166,7 +179,11 @@ final class PlayerController: ObservableObject {
             load(queueIndex + 1)
             resume()
         } else if repeatMode == .all, !queue.isEmpty {
-            if shuffle { queue.shuffle() }
+            if shuffle {
+                queue = ratings.shuffled(original)
+                queueCount = queue.count
+            }
+            guard !queue.isEmpty else { return player.pause() }
             load(0)
             resume()
         } else {

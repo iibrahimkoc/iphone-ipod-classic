@@ -80,7 +80,7 @@ enum Screen {
 /// What the bar at the bottom of Now Playing shows; the center button cycles through them,
 /// and the wheel adjusts the one on screen (volume for the progress bar).
 enum NowPlayingMode: CaseIterable {
-    case progress, shuffle, repeatMode
+    case progress, rating, shuffle, repeatMode
 }
 
 /// What the screen's swipe gestures (or the wheel on Now Playing) are adjusting.
@@ -119,6 +119,8 @@ final class IPodModel: ObservableObject {
     private(set) var albums: [Album] = []
     private(set) lazy var route = AudioRouteController(player: player)
     private var hideHUD: DispatchWorkItem?
+    /// Skips a song shortly after it is disliked, unless the wheel moves on from "✕" first.
+    private var dislikeSkip: DispatchWorkItem?
 
     /// What quarantine changed, so charging can put it back.
     private var preQuarantine: (airplane: Bool, brightness: CGFloat)?
@@ -259,6 +261,14 @@ final class IPodModel: ObservableObject {
             switch nowPlayingMode {
             case .progress:
                 adjustVolume(by: Double(delta) / 16)
+            case .rating:
+                guard let song = player.item else { return }
+                let order: [Ratings.Rating?] = [.disliked, nil, .liked]
+                let index = order.firstIndex { $0 == player.ratings.rating(of: song) }!
+                let new = order[min(max(index + delta.signum(), 0), order.count - 1)]
+                guard new != player.ratings.rating(of: song) else { return }
+                player.ratings.set(new, for: song)
+                scheduleDislikeSkip(song)
             case .shuffle:
                 guard player.shuffle != (delta > 0) else { return }
                 player.shuffle = delta > 0
@@ -337,6 +347,7 @@ final class IPodModel: ObservableObject {
             player.play(items, from: index)
             showNowPlaying()
         case .shuffleAll:
+            player.ratings.prune(keeping: library.songs)
             player.shuffleAll(library.songs)
             showNowPlaying()
         case .nowPlaying:
@@ -380,6 +391,19 @@ final class IPodModel: ObservableObject {
         default:
             break
         }
+    }
+
+    /// A disliked song isn't worth finishing: it is skipped a moment later, like the iPod's
+    /// rating screen gives the wheel time to move on.
+    private func scheduleDislikeSkip(_ song: Song) {
+        dislikeSkip?.cancel()
+        guard player.ratings.rating(of: song) == .disliked else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, self.player.item === song, self.player.ratings.rating(of: song) == .disliked else { return }
+            self.player.next()
+        }
+        dislikeSkip = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
     }
 
     private func showNowPlaying() {
@@ -642,7 +666,18 @@ final class IPodModel: ObservableObject {
                 self.albumsMenu(self.library.albums(of: self.library.songs))
             }),
             MenuItem(title: "Şarkılar", action: .push("Şarkılar") { [unowned self] in self.songsMenu(self.library.songs) }),
+            MenuItem(title: "Beğendiklerim", action: .push("Beğendiklerim") { [unowned self] in
+                self.songsMenu(self.library.songs.filter { self.player.ratings.rating(of: $0) == .liked })
+            }),
         ]
+    }
+
+    static func mark(_ rating: Ratings.Rating?) -> String? {
+        switch rating {
+        case .liked?: return "♥"
+        case .disliked?: return "✕"
+        case nil: return nil
+        }
     }
 
     private func playlistsMenu() -> [MenuItem] {
@@ -669,7 +704,7 @@ final class IPodModel: ObservableObject {
 
     private func songsMenu(_ songs: [Song]) -> [MenuItem] {
         songs.enumerated().map { index, song in
-            MenuItem(title: song.title, action: .play(songs, index))
+            MenuItem(title: song.title, action: .play(songs, index), detail: Self.mark(player.ratings.rating(of: song)))
         }
     }
 }

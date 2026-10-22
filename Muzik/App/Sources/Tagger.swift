@@ -119,15 +119,20 @@ enum Tagger {
             process.standardError = FileHandle.nullDevice
             let stdin = Pipe()
             process.standardInput = stdin
-            process.terminationHandler = { _ in
-                continuation.resume(returning: stdout.fileHandleForReading.readDataToEndOfFile())
-            }
             do {
                 try process.run()
                 stdin.fileHandleForWriting.write(input ?? Data())
                 try? stdin.fileHandleForWriting.close()
             } catch {
                 continuation.resume(throwing: error)
+                return
+            }
+            // Read while it runs: waiting for it to exit first deadlocks once the output is bigger
+            // than the pipe's 64 KB buffer (the iPod's song list is, with a few hundred songs).
+            DispatchQueue.global().async {
+                let data = stdout.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                continuation.resume(returning: data)
             }
         }
     }

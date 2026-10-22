@@ -15,6 +15,7 @@ struct LibraryView: View {
     @State private var original: [Tagger.PhoneSong] = []
     @State private var songs: [Tagger.PhoneSong] = []
     @State private var deleted: [String] = []
+    @State private var ratings: [String: Phone.Rating] = [:]
     @State private var selection: String?
     @State private var loading = false
     @State private var saving = false
@@ -52,6 +53,8 @@ struct LibraryView: View {
             bottomBar
         }
         .onAppear { if songs.isEmpty { load() } }
+        // The window can open before the iPod is found.
+        .onChange(of: phone.found) { found in if found && songs.isEmpty && !loading { load() } }
         .alert("Albüm adı", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
             TextField("Albüm adı", text: $draft)
             Button("Tamam") {
@@ -82,22 +85,93 @@ struct LibraryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The sidebar entry of the disliked songs; album ids are lowercase names, so it can't clash.
+    private static let dislikedTag = "#beğenilmeyenler"
+
+    /// Disliked on the iPod, minus the songs already deleted. A song in the folder is
+    /// "file:<file name>"; a Finder-synced one has only its title and artist.
+    private var disliked: [(id: String, rating: Phone.Rating, song: Tagger.PhoneSong?)] {
+        ratings.filter(\.value.disliked).compactMap { id, rating in
+            guard id.hasPrefix("file:") else { return (id, rating, nil) }
+            let name = String(id.dropFirst(5))
+            guard let song = songs.first(where: { $0.name == name }) else { return nil }
+            return (id, rating, song)
+        }
+        .sorted { $0.rating.title.localizedCompare($1.rating.title) == .orderedAscending }
+    }
+
     private var sidebar: some View {
-        List(albums, selection: $selection) { album in
-            HStack(spacing: 10) {
-                CoverImage(path: album.songs[0].cover, size: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(album.name).lineLimit(1)
-                    Text("\(album.songs.count) şarkı").font(.caption).foregroundStyle(.secondary)
+        List(selection: $selection) {
+            if !disliked.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "hand.thumbsdown.fill")
+                        .foregroundStyle(.red)
+                        .frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Beğenmediklerim").lineLimit(1)
+                        Text("\(disliked.count) şarkı").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                .padding(.vertical, 2)
+                .tag(Self.dislikedTag)
             }
-            .padding(.vertical, 2)
-            .tag(album.id)
+            ForEach(albums) { album in
+                HStack(spacing: 10) {
+                    CoverImage(path: album.songs[0].cover, size: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(album.name).lineLimit(1)
+                        Text("\(album.songs.count) şarkı").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                .tag(album.id)
+            }
+        }
+    }
+
+    private var dislikedDetail: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Beğenmediklerim").font(.title2.weight(.semibold))
+                    Text("iPod'da beğenmediğin şarkılar. Karıştırırken çalınmazlar; silersen iPod'dan tamamen çıkarlar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Hepsini iPod'dan sil") { disliked.compactMap(\.song).forEach(delete) }
+                    .disabled(!disliked.contains { $0.song != nil })
+            }
+            .padding(14)
+            Divider()
+            List(disliked, id: \.id) { entry in
+                HStack(spacing: 10) {
+                    CoverImage(path: entry.song?.cover, size: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.song?.title ?? entry.rating.title).lineLimit(1)
+                        Text(entry.song?.artist ?? entry.rating.artist)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    if let song = entry.song {
+                        Button("iPod'dan sil", role: .destructive) { delete(song) }
+                    } else {
+                        Text("Finder ile eşitlendi, Müzik'ten kaldır")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
         }
     }
 
     @ViewBuilder private var detail: some View {
-        if let album = albums.first(where: { $0.id == selection }) {
+        if selection == Self.dislikedTag {
+            dislikedDetail
+        } else if let album = albums.first(where: { $0.id == selection }) {
             VStack(spacing: 0) {
                 header(album)
                 Divider()
@@ -283,11 +357,15 @@ struct LibraryView: View {
         Task {
             do {
                 let read = try await Tagger.phoneSongs(host: target.host, folder: target.folder)
+                ratings = await phone.ratings()
                 original = read
                 songs = read
                 deleted = []
                 message = note
-                if !albums.contains(where: { $0.id == selection }) { selection = albums.first?.id }
+                if selection != Self.dislikedTag || disliked.isEmpty,
+                   !albums.contains(where: { $0.id == selection }) {
+                    selection = disliked.isEmpty ? albums.first?.id : Self.dislikedTag
+                }
             } catch {
                 message = "iPod'daki şarkılar okunamadı."
             }
