@@ -120,9 +120,9 @@ final class MacRemote: ObservableObject {
         try? FileManager.default.moveItem(at: temp, to: folder.appendingPathComponent(name))
     }
 
-    /// One wheel tick is 1/16 of the range, like the volume buttons.
+    /// One wheel tick is 2 points: fine enough to set it exactly, and a quick turn still goes far.
     func changeVolume(by delta: Int) -> Bool {
-        let new = min(max(volume + Double(delta) * 100 / 16, 0), 100)
+        let new = min(max(volume + Double(delta) * 2, 0), 100)
         guard new != volume else { return false }
         volume = new
         volumeTurned = Date()
