@@ -90,6 +90,7 @@ final class IPodModel: ObservableObject {
     let bluetooth = BluetoothController()
     let wifi = WiFiController()
     let airplane = AirplaneController()
+    let battery = BatteryMonitor()
     private(set) lazy var route = AudioRouteController(player: player)
     private var hideHUD: DispatchWorkItem?
 
@@ -139,7 +140,15 @@ final class IPodModel: ObservableObject {
 
     // MARK: Wheel input
 
+    /// A battery warning on screen takes the next wheel input, like an alert would.
+    private func consumeWarning() -> Bool {
+        guard battery.warning == .low || battery.warning == .veryLow else { return false }
+        battery.dismissWarning()
+        return true
+    }
+
     func scroll(_ delta: Int) {
+        if consumeWarning() { return }
         switch current {
         case .list, .live:
             guard var list = currentList, !list.items.isEmpty else { return }
@@ -175,6 +184,7 @@ final class IPodModel: ObservableObject {
     }
 
     func select() {
+        if consumeWarning() { return }
         if case .password(var entry) = current {
             Feedback.tick()
             switch PasswordEntry.options[entry.index] {
@@ -218,6 +228,7 @@ final class IPodModel: ObservableObject {
     }
 
     func menu() {
+        if consumeWarning() { return }
         Feedback.tick()
         guard stack.count > 1 else { return }
         if case .live(let kind, _, _) = stack.removeLast() {
@@ -272,6 +283,8 @@ final class IPodModel: ObservableObject {
         items.append(MenuItem(title: "Wi-Fi", action: .live(.wifi), detail: wifi.powered ? wifi.current ?? "Açık" : "Kapalı"))
         items.append(MenuItem(title: "Bluetooth", action: .live(.bluetooth), detail: bluetooth.powered ? "Açık" : "Kapalı"))
         items.append(MenuItem(title: "Tık Sesi", action: .clickVolume))
+        items.append(MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
+                              detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"))
         return items
     }
 

@@ -12,7 +12,8 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 ScreenView(model: model, player: model.player, volume: model.volume,
-                           bluetooth: model.bluetooth, wifi: model.wifi, route: model.route, airplane: model.airplane)
+                           bluetooth: model.bluetooth, wifi: model.wifi, route: model.route, airplane: model.airplane,
+                           battery: model.battery)
                     .frame(width: screenWidth, height: screenHeight)
                     .padding(.top, 24)
                 Spacer(minLength: 0)
@@ -58,6 +59,7 @@ struct ScreenView: View {
     @ObservedObject var wifi: WiFiController
     @ObservedObject var route: AudioRouteController
     @ObservedObject var airplane: AirplaneController
+    @ObservedObject var battery: BatteryMonitor
 
     @State private var swipeAxis: Axis?
     @State private var lastTranslation = CGSize.zero
@@ -74,7 +76,7 @@ struct ScreenView: View {
                         hudBar(hud, height: barHeight)
                     } else {
                         TitleBar(title: model.title, isPlaying: player.isPlaying, hasItem: player.item != nil,
-                                 output: route.output)
+                                 output: route.output, batteryLevel: battery.level, charging: battery.charging)
                     }
                 }
                 .frame(height: barHeight)
@@ -103,6 +105,7 @@ struct ScreenView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .overlay(BatteryWarningView(warning: battery.warning, level: battery.level))
             }
             .contentShape(Rectangle())
             .gesture(swipe(size: geo.size))
@@ -165,6 +168,8 @@ struct TitleBar: View {
     let isPlaying: Bool
     let hasItem: Bool
     let output: AudioRouteController.Output
+    let batteryLevel: Float
+    let charging: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -183,6 +188,7 @@ struct TitleBar: View {
                             .foregroundColor(Color(white: 0.3))
                     }
                     Image(systemName: batterySymbol)
+                        .foregroundColor(isLow ? .red : .black)
                 }
             }
             // Overlaid so the title stays centered even though the side items differ in width.
@@ -197,17 +203,15 @@ struct TitleBar: View {
         .overlay(Rectangle().fill(Color(white: 0.55)).frame(height: 1), alignment: .bottom)
     }
 
+    private var isLow: Bool { batteryLevel >= 0 && batteryLevel <= 0.20 && !charging }
+
     private var batteryPercent: Int? {
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        let level = UIDevice.current.batteryLevel
-        return level < 0 ? nil : Int((level * 100).rounded())
+        batteryLevel < 0 ? nil : Int((batteryLevel * 100).rounded())
     }
 
     private var batterySymbol: String {
-        let device = UIDevice.current
-        device.isBatteryMonitoringEnabled = true
-        if device.batteryState == .charging || device.batteryState == .full { return "battery.100.bolt" }
-        switch device.batteryLevel {
+        if charging { return "battery.100.bolt" }
+        switch batteryLevel {
         case ..<0: return "battery.100"
         case ..<0.13: return "battery.0"
         case ..<0.38: return "battery.25"
@@ -427,6 +431,55 @@ struct PasswordView: View {
             .foregroundColor(.black)
             .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// iPod-style battery warnings: a small box at 20 % and 10 %, the whole screen at 5 %.
+struct BatteryWarningView: View {
+    let warning: BatteryMonitor.Warning?
+    let level: Float
+
+    var body: some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            switch warning {
+            case .low?, .veryLow?:
+                VStack(spacing: h * 0.04) {
+                    Image(systemName: "battery.25")
+                        .font(.system(size: h * 0.2))
+                        .foregroundColor(.red)
+                    Text(warning == .low ? "Pil Zayıf" : "Pil Çok Zayıf")
+                        .font(.system(size: h * 0.09, weight: .bold))
+                    Text(warning == .low ? "%\(Int((level * 100).rounded())) kaldı · Düşük Güç Modu açık" : "Şarja takın")
+                        .font(.system(size: h * 0.06))
+                        .foregroundColor(Color(white: 0.35))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(LinearGradient(colors: [Color(white: 1), Color(white: 0.9)], startPoint: .top, endPoint: .bottom))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.5), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .critical?:
+                VStack(spacing: h * 0.05) {
+                    Image(systemName: "battery.0")
+                        .font(.system(size: h * 0.3))
+                        .foregroundColor(.red)
+                    Text("Şarj Edin")
+                        .font(.system(size: h * 0.11, weight: .bold))
+                    Text("Pil biterse jailbreak kapanır.")
+                        .font(.system(size: h * 0.065))
+                        .foregroundColor(Color(white: 0.35))
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.white)
+            case nil:
+                EmptyView()
+            }
         }
     }
 }
