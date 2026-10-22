@@ -13,7 +13,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 ScreenView(model: model, player: model.player, volume: model.volume,
                            bluetooth: model.bluetooth, wifi: model.wifi, route: model.route, airplane: model.airplane,
-                           battery: model.battery, library: model.library)
+                           battery: model.battery, library: model.library, sleepTimer: model.sleepTimer)
                     .frame(width: screenWidth, height: screenHeight)
                     .padding(.top, 24)
                 Spacer(minLength: 0)
@@ -62,6 +62,7 @@ struct ScreenView: View {
     @ObservedObject var airplane: AirplaneController
     @ObservedObject var battery: BatteryMonitor
     @ObservedObject var library: SongLibrary
+    @ObservedObject var sleepTimer: SleepTimer
 
     @State private var swipeAxis: Axis?
     @State private var lastTranslation = CGSize.zero
@@ -78,7 +79,8 @@ struct ScreenView: View {
                         hudBar(hud, height: barHeight)
                     } else {
                         TitleBar(title: library.receiving ? "Müzik alınıyor…" : model.title, isPlaying: player.isPlaying, hasItem: player.item != nil,
-                                 output: route.output, batteryLevel: battery.level, charging: battery.charging)
+                                 output: route.output, batteryLevel: battery.level, charging: battery.charging,
+                                 sleeping: sleepTimer.endDate != nil)
                     }
                 }
                 .frame(height: barHeight)
@@ -100,7 +102,7 @@ struct ScreenView: View {
                         case .password(let entry):
                             PasswordView(entry: entry)
                         case .nowPlaying:
-                            NowPlayingView(player: player)
+                            NowPlayingView(player: player, mode: model.nowPlayingMode)
                         case .clickVolume:
                             ClickVolumeView(level: model.clickVolume)
                         case .coverFlow(let index):
@@ -174,6 +176,7 @@ struct TitleBar: View {
     let output: AudioRouteController.Output
     let batteryLevel: Float
     let charging: Bool
+    let sleeping: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -183,6 +186,10 @@ struct TitleBar: View {
                         .opacity(hasItem ? 1 : 0)
                     Image(systemName: output.symbol)
                         .font(.system(size: geo.size.height * 0.42))
+                    if sleeping {
+                        Image(systemName: "moon.fill")
+                            .font(.system(size: geo.size.height * 0.38))
+                    }
                 }
                 Spacer()
                 HStack(spacing: 3) {
@@ -288,14 +295,22 @@ struct ListView: View {
 
 struct NowPlayingView: View {
     @ObservedObject var player: PlayerController
+    let mode: NowPlayingMode
 
     var body: some View {
         GeometryReader { geo in
             let h = geo.size.height
             if let item = player.item {
                 VStack(alignment: .leading, spacing: h * 0.04) {
-                    Text(player.queueCount > 0 ? "\(player.queueIndex + 1) / \(player.queueCount)" : " ")
-                        .font(.system(size: h * 0.07, weight: .semibold))
+                    HStack(spacing: 6) {
+                        Text(player.queueCount > 0 ? "\(player.queueIndex + 1) / \(player.queueCount)" : " ")
+                        Spacer()
+                        if player.shuffle { Image(systemName: "shuffle") }
+                        if player.repeatMode != .off {
+                            Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
+                        }
+                    }
+                    .font(.system(size: h * 0.07, weight: .semibold))
                     HStack(alignment: .top, spacing: 10) {
                         artwork(item, size: h * 0.5)
                         VStack(alignment: .leading, spacing: 4) {
@@ -310,16 +325,24 @@ struct NowPlayingView: View {
                         .lineLimit(2)
                     }
                     Spacer(minLength: 0)
-                    VStack(spacing: 2) {
-                        bar(player.duration > 0 ? player.elapsed / player.duration : 0)
-                        HStack {
-                            Text(format(player.elapsed))
-                            Spacer()
-                            Text("-" + format(max(player.duration - player.elapsed, 0)))
+                    switch mode {
+                    case .progress:
+                        VStack(spacing: 2) {
+                            bar(player.duration > 0 ? player.elapsed / player.duration : 0)
+                            HStack {
+                                Text(format(player.elapsed))
+                                Spacer()
+                                Text("-" + format(max(player.duration - player.elapsed, 0)))
+                            }
+                            .font(.system(size: h * 0.06, weight: .semibold))
                         }
-                        .font(.system(size: h * 0.06, weight: .semibold))
+                        .frame(height: h * 0.1)
+                    case .shuffle:
+                        picker("Karıştır", options: ["Kapalı", "Şarkılar"], selected: player.shuffle ? 1 : 0, h: h)
+                    case .repeatMode:
+                        picker("Tekrarla", options: PlayerController.RepeatMode.allCases.map(\.name),
+                               selected: player.repeatMode.rawValue, h: h)
                     }
-                    .frame(height: h * 0.1)
                 }
                 .foregroundColor(.black)
                 .padding(10)
@@ -330,6 +353,24 @@ struct NowPlayingView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    /// "Karıştır  [Kapalı] Şarkılar": the wheel moves the highlight.
+    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat) -> some View {
+        HStack(spacing: 4) {
+            Text(title).font(.system(size: h * 0.065, weight: .bold))
+            Spacer()
+            ForEach(options.indices, id: \.self) { index in
+                Text(options[index])
+                    .font(.system(size: h * 0.06, weight: .semibold))
+                    .foregroundColor(index == selected ? .white : .black)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Group { if index == selected { highlight } })
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+        }
+        .frame(height: h * 0.1)
     }
 
     private func artwork(_ item: Song, size: CGFloat) -> some View {

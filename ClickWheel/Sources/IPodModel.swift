@@ -73,6 +73,12 @@ enum Screen {
     case password(PasswordEntry)
 }
 
+/// What the bar at the bottom of Now Playing shows; the center button cycles through them,
+/// and the wheel adjusts the one on screen (volume for the progress bar).
+enum NowPlayingMode: CaseIterable {
+    case progress, shuffle, repeatMode
+}
+
 /// What the screen's swipe gestures (or the wheel on Now Playing) are adjusting.
 enum HUD {
     case volume
@@ -88,6 +94,7 @@ final class IPodModel: ObservableObject {
     @Published private(set) var hud: HUD?
     @Published private(set) var brightness = Double(UIScreen.main.brightness)
     @Published private(set) var clickVolume = Feedback.volume
+    @Published private(set) var nowPlayingMode = NowPlayingMode.progress
 
     let player = PlayerController()
     let volume = VolumeController()
@@ -96,6 +103,7 @@ final class IPodModel: ObservableObject {
     let airplane = AirplaneController()
     let battery = BatteryMonitor()
     let library = SongLibrary()
+    private(set) lazy var sleepTimer = SleepTimer { [unowned self] done in self.player.fadeOutAndPause(completion: done) }
     /// Albums for Cover Flow, loaded when it opens.
     private(set) var albums: [Album] = []
     private(set) lazy var route = AudioRouteController(player: player)
@@ -216,7 +224,18 @@ final class IPodModel: ObservableObject {
             }
             Feedback.tick()
         case .nowPlaying:
-            adjustVolume(by: Double(delta) / 16)
+            switch nowPlayingMode {
+            case .progress:
+                adjustVolume(by: Double(delta) / 16)
+            case .shuffle:
+                guard player.shuffle != (delta > 0) else { return }
+                player.shuffle = delta > 0
+            case .repeatMode:
+                let modes = PlayerController.RepeatMode.allCases
+                let new = modes[min(max(player.repeatMode.rawValue + delta.signum(), 0), modes.count - 1)]
+                guard new != player.repeatMode else { return }
+                player.repeatMode = new
+            }
             Feedback.tick()
         case .clickVolume:
             let new = min(max((clickVolume + Double(delta) * 0.05) * 20, 0), 20).rounded() / 20
@@ -254,6 +273,12 @@ final class IPodModel: ObservableObject {
             stack[stack.count - 1] = .password(entry)
             return
         }
+        if case .nowPlaying = current {
+            Feedback.tick()
+            let modes = NowPlayingMode.allCases
+            nowPlayingMode = modes[(modes.firstIndex(of: nowPlayingMode)! + 1) % modes.count]
+            return
+        }
         if case .coverFlow(let index) = current {
             guard albums.indices.contains(index) else { return }
             Feedback.tick()
@@ -268,12 +293,12 @@ final class IPodModel: ObservableObject {
             stack.append(.list(ListScreen(title: title, items: makeItems())))
         case .play(let items, let index):
             player.play(items, from: index)
-            stack.append(.nowPlaying)
+            showNowPlaying()
         case .shuffleAll:
-            player.shuffle(library.songs)
-            stack.append(.nowPlaying)
+            player.shuffleAll(library.songs)
+            showNowPlaying()
         case .nowPlaying:
-            stack.append(.nowPlaying)
+            showNowPlaying()
         case .clickVolume:
             stack.append(.clickVolume)
         case .coverFlow:
@@ -302,6 +327,11 @@ final class IPodModel: ObservableObject {
             case .wifi: wifi.stopScanning()
             }
         }
+    }
+
+    private func showNowPlaying() {
+        nowPlayingMode = .progress
+        stack.append(.nowPlaying)
     }
 
     // MARK: Screen swipes
@@ -346,10 +376,33 @@ final class IPodModel: ObservableObject {
         }
         items.append(MenuItem(title: "Wi-Fi", action: .live(.wifi), detail: wifi.powered ? wifi.current ?? "Açık" : "Kapalı"))
         items.append(MenuItem(title: "Bluetooth", action: .live(.bluetooth), detail: bluetooth.powered ? "Açık" : "Kapalı"))
+        items.append(MenuItem(title: "Karıştır", action: .run { [unowned self] in self.player.shuffle.toggle() },
+                              detail: player.shuffle ? "Şarkılar" : "Kapalı"))
+        items.append(MenuItem(title: "Tekrarla", action: .run { [unowned self] in
+            let modes = PlayerController.RepeatMode.allCases
+            self.player.repeatMode = modes[(self.player.repeatMode.rawValue + 1) % modes.count]
+        }, detail: player.repeatMode.name))
+        items.append(MenuItem(title: "Uyku Zamanlayıcısı", action: .push("Uyku Zamanlayıcısı") { [unowned self] in
+            self.sleepTimerItems()
+        }, detail: sleepTimer.remainingMinutes.map { "\($0) dk" } ?? "Kapalı"))
         items.append(MenuItem(title: "Tık Sesi", action: .clickVolume))
         items.append(MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
                               detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"))
         return items
+    }
+
+    /// Choosing an entry starts the timer (or turns it off) and goes back to Settings.
+    private func sleepTimerItems() -> [MenuItem] {
+        let off = MenuItem(title: "Kapalı", action: .run { [unowned self] in
+            self.sleepTimer.cancel()
+            self.menu()
+        })
+        return [off] + SleepTimer.choices.map { minutes in
+            MenuItem(title: "\(minutes) dakika", action: .run { [unowned self] in
+                self.sleepTimer.start(minutes: minutes)
+                self.menu()
+            })
+        }
     }
 
     private func wifiItems() -> [MenuItem] {

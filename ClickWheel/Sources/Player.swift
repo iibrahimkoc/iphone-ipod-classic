@@ -5,6 +5,29 @@ import AVFoundation
 /// Plays Songs with AVPlayer in the app itself (the system Music player can't play the app's
 /// own files), with background audio, lock screen info and headphone/AirPods controls.
 final class PlayerController: ObservableObject {
+    enum RepeatMode: Int, CaseIterable {
+        case off, one, all
+
+        var name: String {
+            switch self {
+            case .off: return "Kapalı"
+            case .one: return "Bir"
+            case .all: return "Tümü"
+            }
+        }
+    }
+
+    /// Songs: play in random order. Persisted, like the iPod's settings.
+    @Published var shuffle = UserDefaults.standard.bool(forKey: "shuffle") {
+        didSet {
+            UserDefaults.standard.set(shuffle, forKey: "shuffle")
+            if shuffle != oldValue { reorderQueue() }
+        }
+    }
+    @Published var repeatMode = RepeatMode(rawValue: UserDefaults.standard.integer(forKey: "repeat")) ?? .off {
+        didSet { UserDefaults.standard.set(repeatMode.rawValue, forKey: "repeat") }
+    }
+
     @Published private(set) var item: Song?
     @Published private(set) var isPlaying = false
     @Published private(set) var elapsed: TimeInterval = 0
@@ -13,6 +36,8 @@ final class PlayerController: ObservableObject {
 
     private let player = AVPlayer()
     private var queue: [Song] = []
+    /// The list as chosen, so turning shuffle off restores its order.
+    private var original: [Song] = []
     private var observers: [NSObjectProtocol] = []
     private var timeObserver: Any?
     private var statusObservation: NSKeyValueObservation?
@@ -48,15 +73,49 @@ final class PlayerController: ObservableObject {
         guard songs.indices.contains(index) else { return }
         // Music synced through Finder used to play in the system player; make sure it is quiet.
         MPMusicPlayerController.systemMusicPlayer.pause()
-        queue = songs
+        original = songs
+        // With shuffle on, the chosen song plays first and the rest follow in random order.
+        queue = shuffle ? [songs[index]] + songs.enumerated().filter { $0.offset != index }.map(\.element).shuffled() : songs
         queueCount = songs.count
-        load(index)
+        load(shuffle ? 0 : index)
         resume()
     }
 
-    func shuffle(_ songs: [Song]) {
+    /// "Şarkıları Karıştır": the whole library in random order, whatever the shuffle setting.
+    func shuffleAll(_ songs: [Song]) {
         guard !songs.isEmpty else { return }
-        play(songs.shuffled(), from: 0)
+        play(songs, from: Int.random(in: songs.indices))
+        if !shuffle {
+            queue = [queue[queueIndex]] + songs.filter { $0 !== queue[queueIndex] }.shuffled()
+            queueIndex = 0
+        }
+    }
+
+    /// Fades the music out over a few seconds, then pauses (for the sleep timer).
+    func fadeOutAndPause(completion: @escaping () -> Void) {
+        let steps = 20
+        for step in 1 ... steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 0.4) { [weak self] in
+                guard let self = self else { return }
+                self.player.volume = Float(steps - step) / Float(steps)
+                if step == steps {
+                    self.player.pause()
+                    self.player.volume = 1
+                    completion()
+                }
+            }
+        }
+    }
+
+    private func reorderQueue() {
+        guard let current = item, !original.isEmpty else { return }
+        if shuffle {
+            queue = [current] + original.filter { $0 !== current }.shuffled()
+            queueIndex = 0
+        } else {
+            queue = original
+            queueIndex = original.firstIndex { $0 === current } ?? 0
+        }
     }
 
     func togglePlay() {
@@ -70,17 +129,22 @@ final class PlayerController: ObservableObject {
 
     func next() {
         Feedback.tick()
-        guard queueIndex + 1 < queue.count else { return }
-        load(queueIndex + 1)
+        if queueIndex + 1 < queue.count {
+            load(queueIndex + 1)
+        } else if repeatMode == .all, !queue.isEmpty {
+            load(0)
+        } else {
+            return
+        }
         resume()
     }
 
     func previous() {
         Feedback.tick()
-        if elapsed > 3 || queueIndex == 0 {
+        if elapsed > 3 || (queueIndex == 0 && repeatMode != .all) {
             player.seek(to: .zero)
         } else {
-            load(queueIndex - 1)
+            load(queueIndex == 0 ? queue.count - 1 : queueIndex - 1)
             resume()
         }
     }
@@ -92,10 +156,18 @@ final class PlayerController: ObservableObject {
         player.play()
     }
 
-    /// At the end of a song: the next one, or stop at the end of the list like the iPod.
+    /// At the end of a song: the same one again, the next one, back to the start (Repeat All,
+    /// reshuffled if shuffling), or stop at the end of the list like the iPod.
     private func advance() {
-        if queueIndex + 1 < queue.count {
+        if repeatMode == .one {
+            player.seek(to: .zero)
+            resume()
+        } else if queueIndex + 1 < queue.count {
             load(queueIndex + 1)
+            resume()
+        } else if repeatMode == .all, !queue.isEmpty {
+            if shuffle { queue.shuffle() }
+            load(0)
             resume()
         } else {
             player.pause()
