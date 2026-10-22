@@ -121,7 +121,7 @@ struct ScreenView: View {
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black, lineWidth: 2))
     }
 
-    /// Horizontal swipes change brightness, vertical swipes change volume (up is louder).
+    /// Horizontal swipes change volume (right is louder), vertical swipes change brightness (up is brighter).
     /// The axis is locked at the start of each swipe so diagonal drags don't change both.
     private func swipe(size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 12)
@@ -130,9 +130,9 @@ struct ScreenView: View {
                 let axis = swipeAxis ?? (abs(t.width) > abs(t.height) ? .horizontal : .vertical)
                 swipeAxis = axis
                 if axis == .horizontal {
-                    model.adjustBrightness(by: Double((t.width - lastTranslation.width) / size.width))
+                    model.adjustVolume(by: Double((t.width - lastTranslation.width) / size.width))
                 } else {
-                    model.adjustVolume(by: Double((lastTranslation.height - t.height) / size.height))
+                    model.adjustBrightness(by: Double((lastTranslation.height - t.height) / size.height))
                 }
                 lastTranslation = t
             }
