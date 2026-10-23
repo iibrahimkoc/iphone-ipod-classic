@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define RATE 32000
-#define FPS 60
+#define FPS J2ME_FPS
 
 static retro_environment_t environ_cb;
 static retro_video_refresh_t video_cb;

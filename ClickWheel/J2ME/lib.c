@@ -414,7 +414,17 @@ NATIVE(thread_start) {
 NATIVE(thread_sleep) {
     (void)ret;
     int64_t ms = ARG(0).j < 0 ? 0 : ARG(0).j;
-    t->wake = vm_now + ms;
+    // The games were timed on phones that took tens of milliseconds to draw a screen, and they
+    // sleep a fixed time on top of that (Forgotten Warrior 23 ms a step). Drawing here is
+    // instant, so the time the phone would have spent on what was drawn is added to the sleep:
+    // a full 240×320 screen is ~51 ms, which puts a Forgotten Warrior step at ~65 ms.
+    ms += midp_drawn / PIXELS_PER_MS;
+    midp_drawn = 0;
+    // Rounded up to the next shown frame: the game's animation advances once per step, and
+    // steps that each last the same number of frames walk evenly instead of 4, 4, 4, 3.
+    int64_t frame = ((vm_now + ms) * J2ME_FPS + 999) / 1000;
+    t->wake = frame * 1000 / J2ME_FPS;
+    if (t->wake < vm_now) t->wake = vm_now;
     t->yield = true;
 }
 NATIVE(thread_yield) { (void)ret; (void)args; t->wake = vm_now; t->yield = true; }

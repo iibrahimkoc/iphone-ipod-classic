@@ -28,6 +28,7 @@ static Obj *screen;          // the Image that paint() draws on
 static Obj *screen_graphics; // GameCanvas.getGraphics()
 static uint32_t key_states;  // GameCanvas.getKeyStates()
 static char save_dir[1024];
+int64_t midp_drawn;
 
 static Class *image_class, *graphics_class, *font_class;
 
@@ -201,6 +202,7 @@ static void fill(Obj *g, int x, int y, int w, int h) {
     int x1 = x + w > cx1 ? cx1 : x + w, y1 = y + h > cy1 ? cy1 : y + h;
     Obj *img = g->u.gfx.image;
     uint32_t c = g->u.gfx.color;
+    if (x1 > x0 && y1 > y0) midp_drawn += (int64_t)(x1 - x0) * (y1 - y0);
     for (int yy = y0; yy < y1; yy++) {
         uint32_t *row = img->u.img.pixels + (size_t)yy * img->u.img.w;
         for (int xx = x0; xx < x1; xx++) row[xx] = c;
@@ -291,6 +293,8 @@ static void draw_region(Obj *g, Obj *src, int sx, int sy, int w, int h, int tran
     y += g->u.gfx.ty;
     Obj *dst = g->u.gfx.image;
     int sw = src->u.img.w;
+    int vw = (x + dw < cx1 ? x + dw : cx1) - (x > cx0 ? x : cx0), vh = (y + dh < cy1 ? y + dh : cy1) - (y > cy0 ? y : cy0);
+    if (vw > 0 && vh > 0) midp_drawn += (int64_t)vw * vh;
     for (int dy = 0; dy < dh; dy++) {
         int py = y + dy;
         if (py < cy0 || py >= cy1) continue;
@@ -347,6 +351,7 @@ NATIVE(g_drawrgb) {
     x += THIS->u.gfx.tx;
     y += THIS->u.gfx.ty;
     Obj *dst = THIS->u.gfx.image;
+    if (w > 0 && h > 0) midp_drawn += (int64_t)w * h;
     for (int dy = 0; dy < h; dy++) {
         if (y + dy < cy0 || y + dy >= cy1) continue;
         for (int dx = 0; dx < w; dx++) {
@@ -465,6 +470,7 @@ static void draw_text(Obj *g, const uint16_t *chars, int32_t len, int x, int y, 
     CGContextSetShouldSmoothFonts(ctx, false);
     CGContextSetTextPosition(ctx, x, img->u.img.h - baseline);
     CTLineDraw(line, ctx);
+    midp_drawn += (int64_t)w * text_height(font);
     CGContextRelease(ctx);
     CFRelease(line);
 }
@@ -883,6 +889,7 @@ void midp_init(void) {
     midp_repaint_pending = false;
     midp_exit = false;
     key_states = 0;
+    midp_drawn = 0;
     screen_graphics = NULL;
     stores = NULL;
 

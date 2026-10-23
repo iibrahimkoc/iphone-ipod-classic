@@ -183,6 +183,11 @@ uint32_t *midp_pixels(void);
 extern int midp_width, midp_height;
 extern bool midp_repaint_pending;
 extern bool midp_exit;
+// Pixels drawn since the drawing thread last slept, for the phone's drawing time (see Thread.sleep).
+extern int64_t midp_drawn;
+#define PIXELS_PER_MS 1500
+// Frames the frontend shows a second; sleeps end on a frame, so each picture stays up evenly.
+#define J2ME_FPS 60
 void midp_paint(void);
 void midp_key(int code, bool pressed);
 void midp_set_save_dir(const char *dir);
