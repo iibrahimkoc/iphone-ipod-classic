@@ -126,7 +126,7 @@ final class IPodModel: ObservableObject {
     let photos = PhotoLibrary()
     let macRemote = MacRemote()
     /// The emulated game on screen.
-    private(set) var emulator: Emulator?
+    private(set) var emulator: GameSession?
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
     private(set) lazy var sleepTimer = SleepTimer { [unowned self] done in self.player.fadeOutAndPause(completion: done) }
     /// Albums for Cover Flow, loaded when it opens.
@@ -714,6 +714,7 @@ final class IPodModel: ObservableObject {
         [
             MenuItem(title: "Satranç", action: .push("Satranç") { [unowned self] in self.chessMenu() }),
             MenuItem(title: "Doom", action: .push("Doom") { [unowned self] in self.consoleMenu(.doom) }),
+            MenuItem(title: "Flash", action: .push("Flash") { [unowned self] in self.consoleMenu(.flash) }),
             MenuItem(title: "Java", action: .push("Java") { [unowned self] in self.consoleMenu(.java) }),
             MenuItem(title: "Mega Drive", action: .push("Mega Drive") { [unowned self] in self.consoleMenu(.megaDrive) }),
             MenuItem(title: "NES", action: .push("NES") { [unowned self] in self.consoleMenu(.nes) }),
@@ -744,7 +745,8 @@ final class IPodModel: ObservableObject {
     }
 
     private func openGame(_ game: URL, on console: Console) {
-        guard let emulator = Emulator(console: console, game: game) else { return }
+        let session: GameSession? = console.web ? FlashGame(console: console, game: game) : Emulator(console: console, game: game)
+        guard let emulator = session else { return }
         emulator.onExit = { [unowned self] in
             if case .game = self.current, self.emulator === emulator { self.menu() }
         }

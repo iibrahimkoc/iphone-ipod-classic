@@ -46,10 +46,21 @@ struct Console {
         ]],
         help: "Tekerlek: yürü · Yukarı: zıpla · Orta: vur\nSol/sağ dokun: alt köşedeki tuşlar\nİksire dokun: iç · MP'ye dokun: büyü · Uzun bas: çık")
 
+    /// Flash games (.swf), played by Ruffle in a web view (FlashGame) rather than a core. The wheel
+    /// is the arrow keys and the center the space bar; the screen is the mouse.
+    static let flash = Console(
+        name: "Flash", core: "", folder: root.appendingPathComponent("Flash"),
+        extensions: ["swf"], web: true,
+        center: RETRO_DEVICE_ID_JOYPAD_A, leftTap: RETRO_DEVICE_ID_JOYPAD_START, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
+        help: "Tekerlek: ok tuşları · Orta: boşluk\nEkrana dokun: tıkla · Uzun bas: çık")
+
     let name: String
+    /// The libretro core's file in the app's cores folder; empty for Flash.
     let core: String
     let folder: URL
     let extensions: Set<String>
+    /// Played by FlashGame instead of a core; the screen's touches go to the game.
+    var web = false
     /// Menu names for known files.
     var titles: [String: String] = [:]
     /// Phone game files carry their version and language after the name
@@ -510,16 +521,20 @@ final class GamepadView: UIView {
 /// left or right half presses that side's button, a tap on one of the game's zones its button;
 /// a long press anywhere leaves.
 struct GameScreen: View {
-    let game: Emulator
+    let game: GameSession
     let onTap: (_ button: Int32) -> Void
     let onLeave: () -> Void
     @State private var showsHelp = true
 
     var body: some View {
         GameLayer(view: game.view)
-            .overlay(HStack(spacing: 0) {
-                half(left: true)
-                half(left: false)
+            .overlay(Group {
+                if !game.console.web {
+                    HStack(spacing: 0) {
+                        half(left: true)
+                        half(left: false)
+                    }
+                }
             })
             .overlay(GeometryReader { geo in
                 let picture = pictureRect(in: geo.size)

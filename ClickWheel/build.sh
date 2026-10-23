@@ -58,6 +58,17 @@ for CORE in "$GPGX" "$PRBOOM" "$FCEUMM" "$J2ME"; do
     ldid -S "$APP/cores/$(basename "$CORE")"
 done
 
+# Ruffle's web build for Oyunlar › Flash (FlashGame serves it to its web view): a nightly from
+# before the build, fetched once, without the source maps.
+RUFFLE=build/ruffle
+if [ ! -f "$RUFFLE/ruffle.js" ]; then
+    mkdir -p "$RUFFLE"
+    gh release download nightly-2026-09-30 -R ruffle-rs/ruffle -p '*web-selfhosted.zip' -D "$RUFFLE" --clobber
+    unzip -oq "$RUFFLE"/*.zip -d "$RUFFLE"
+fi
+mkdir -p "$APP/ruffle"
+cp "$RUFFLE"/*.js "$RUFFLE"/*.wasm "$APP/ruffle/"
+
 PKG=build/deb
 rm -rf "$PKG"
 mkdir -p "$PKG/DEBIAN" "$PKG/var/jb/Applications"
@@ -65,7 +76,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 2.17.1
+Version: 2.18
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc

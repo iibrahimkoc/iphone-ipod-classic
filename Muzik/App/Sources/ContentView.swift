@@ -122,7 +122,7 @@ struct ContentView: View {
                 .font(.title2.weight(.semibold))
             Text("Şarkı adı, sanatçı, albüm ve kapak otomatik bulunur.")
                 .foregroundStyle(.secondary)
-            Text("Oyunlar da olur: .nes, .md, .wad, .jar dosyaları iPod'un Oyunlar bölümüne gider.")
+            Text("Oyunlar da olur: .nes, .md, .wad, .jar, .swf dosyaları iPod'un Oyunlar bölümüne gider.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

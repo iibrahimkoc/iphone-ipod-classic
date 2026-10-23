@@ -69,3 +69,11 @@ and tested with Forgotten Warrior (240×320). The wheel is the phone's D-pad (up
 the center is fire, the screen's halves are the soft keys, and that game's potions and MP bar can be tapped.
 `J2ME/test.c` runs a game on the Mac with scripted buttons and writes screenshots, for working on the core.
 There are no save states: a game's own saves (its Continue) are what carry over.
+
+**Oyunlar › Flash** plays Flash games (`.swf`, in `/var/mobile/Media/iPodOyun/Flash`) with
+[Ruffle](https://github.com/ruffle-rs/ruffle)'s web build, which `build.sh` bundles into the app, in a web view
+(`Sources/Flash.swift`). The page, Ruffle and the game come from an `ipod-flash:` URL scheme the app serves. It uses
+Ruffle's own WebGL renderer (wgpu over WebGL draws nothing in iOS 15's web view) at high quality. The wheel sends
+arrow keys and the center the space bar; Ruffle only takes keys after a focusin, so one is sent before each. The
+screen is the mouse, and a long press leaves. Ruffle's messages go to `iPodOyun/Flash/.flash.log`.
+Tested with Domuzcuk (Mr. Don).
