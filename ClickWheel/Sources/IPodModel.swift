@@ -84,15 +84,17 @@ enum Screen {
     case macRemote
     /// Fener's flash.
     case flashlight
+    /// Held center on Now Playing: the song's rating (positions 0–2: ✕, –, ♥) and Paylaşımlık (3).
+    case songActions(Song, selection: Int)
     /// Index of the photo on screen, newest first.
     case photos(Int)
 }
 
 /// What the bar at the bottom of Now Playing shows; the center button cycles through progress,
-/// shuffle and repeat, holding it opens the rating, and the wheel adjusts the one on screen
-/// (volume for the progress bar).
+/// shuffle and repeat, and the wheel adjusts the one on screen (volume for the progress bar).
+/// Holding the center opens the song's screen (rating, Paylaşımlık Şarkılar).
 enum NowPlayingMode {
-    case progress, rating, shuffle, repeatMode
+    case progress, shuffle, repeatMode
 
     static let cycle: [NowPlayingMode] = [.progress, .shuffle, .repeatMode]
 }
@@ -132,6 +134,7 @@ final class IPodModel: ObservableObject {
     let photos = PhotoLibrary()
     let macRemote = MacRemote()
     let flashlight = Flashlight()
+    let shared = SharedSongs()
     /// The emulated game on screen.
     private(set) var emulator: GameSession?
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
@@ -235,6 +238,7 @@ final class IPodModel: ObservableObject {
         case .camera: return "Kamera"
         case .macRemote: return "Mac"
         case .flashlight: return "Fener"
+        case .songActions: return "Şarkı"
         case .photos: return photos.favoritesOnly ? "Favoriler" : "Fotoğraflar"
         }
     }
@@ -302,14 +306,6 @@ final class IPodModel: ObservableObject {
             switch nowPlayingMode {
             case .progress:
                 adjustVolume(by: Double(delta) / 16)
-            case .rating:
-                guard let song = player.item else { return }
-                let order: [Ratings.Rating?] = [.disliked, nil, .liked]
-                let index = order.firstIndex { $0 == player.ratings.rating(of: song) }!
-                let new = order[min(max(index + delta.signum(), 0), order.count - 1)]
-                guard new != player.ratings.rating(of: song) else { return }
-                player.ratings.set(new, for: song)
-                scheduleDislikeSkip(song)
             case .shuffle:
                 guard player.shuffle != (delta > 0) else { return }
                 player.shuffle = delta > 0
@@ -346,6 +342,11 @@ final class IPodModel: ObservableObject {
             if macRemote.changeVolume(by: delta) { Feedback.tick() }
         case .flashlight:
             if flashlight.changeTone(by: delta) { Feedback.tick() }
+        case .songActions(let song, let selection):
+            let new = min(max(selection + delta.signum(), 0), Self.songActionCount - 1)
+            guard new != selection else { return }
+            stack[stack.count - 1] = .songActions(song, selection: new)
+            Feedback.tick()
         case .photos(let index):
             let new = min(max(index + delta, 0), max(photos.assets.count - 1, 0))
             guard new != index else { return }
@@ -382,6 +383,18 @@ final class IPodModel: ObservableObject {
             return
         }
         if case .photos = current { return }
+        if case .songActions(let song, let selection) = current {
+            Feedback.tick()
+            if selection < Self.ratingOrder.count {
+                player.ratings.set(Self.ratingOrder[selection], for: song)
+                scheduleDislikeSkip(song)
+            } else {
+                shared.toggle(song)
+            }
+            // Redrawn, so the marks show what was chosen.
+            stack[stack.count - 1] = .songActions(song, selection: selection)
+            return
+        }
         if case .flashlight = current {
             Feedback.tick()
             flashlight.cycleLevel()
@@ -395,7 +408,6 @@ final class IPodModel: ObservableObject {
         }
         if case .nowPlaying = current {
             Feedback.tick()
-            // From the rating, a tap goes back to the progress bar.
             let modes = NowPlayingMode.cycle
             nowPlayingMode = modes.firstIndex(of: nowPlayingMode).map { modes[($0 + 1) % modes.count] } ?? .progress
             return
@@ -453,8 +465,8 @@ final class IPodModel: ObservableObject {
         }
     }
 
-    /// Holding the center on Now Playing opens the rating; the finger can slide onto the ring to rate.
-    /// On a photo it opens that photo's menu.
+    /// Holding the center on Now Playing opens the song's screen, on its rating; the finger can slide
+    /// onto the ring to move along it. On a photo it opens that photo's menu.
     func hold() -> Bool {
         if consumeWarning() { return true }
         if case .photos(let index) = current, photos.assets.indices.contains(index) {
@@ -462,9 +474,10 @@ final class IPodModel: ObservableObject {
             stack.append(.list(ListScreen(title: "Fotoğraf", items: photoMenu(index))))
             return true
         }
-        guard case .nowPlaying = current, player.item != nil else { return false }
+        guard case .nowPlaying = current, let song = player.item else { return false }
         Feedback.tick()
-        nowPlayingMode = .rating
+        let rating = player.ratings.rating(of: song)
+        stack.append(.songActions(song, selection: Self.ratingOrder.firstIndex { $0 == rating } ?? 1))
         return true
     }
 
@@ -660,7 +673,7 @@ final class IPodModel: ObservableObject {
     /// What the screen shows, for the battery usage counter.
     private func usageActivity() -> BatteryUsage.Activity {
         switch current {
-        case .nowPlaying, .coverFlow: return .music
+        case .nowPlaying, .coverFlow, .songActions: return .music
         case .game, .chess: return .games
         case .camera, .photos: return .camera
         case .macRemote: return .macRemote
@@ -881,8 +894,15 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Beğendiklerim", action: .push("Beğendiklerim") { [unowned self] in
                 self.songsMenu(self.library.songs.filter { self.player.ratings.rating(of: $0) == .liked })
             }),
+            MenuItem(title: "Paylaşımlık Şarkılar", action: .push("Paylaşımlık Şarkılar") { [unowned self] in
+                self.songsMenu(self.shared.songs(in: self.library.songs))
+            }),
         ]
     }
+
+    /// The song screen's rating row, left to right.
+    static let ratingOrder: [Ratings.Rating?] = [.disliked, nil, .liked]
+    static let songActionCount = ratingOrder.count + 1
 
     static func mark(_ rating: Ratings.Rating?) -> String? {
         switch rating {

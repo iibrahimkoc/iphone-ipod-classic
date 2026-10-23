@@ -100,3 +100,51 @@ final class Ratings: ObservableObject {
         return result
     }
 }
+
+/// Songs set aside to share, newest first, kept in the music folder as ".shared.json" like the
+/// ratings, so the Mac's iPod Müzik app can read them. Each entry keeps the title and artist too.
+final class SharedSongs: ObservableObject {
+    struct Entry: Codable {
+        var id: String
+        var title: String
+        var artist: String
+        var added: Date
+    }
+
+    static let file = SongLibrary.folder.appendingPathComponent(".shared.json")
+
+    @Published private(set) var entries: [Entry] = []
+
+    init() {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let data = try? Data(contentsOf: Self.file), let saved = try? decoder.decode([Entry].self, from: data) {
+            entries = saved
+        }
+    }
+
+    func contains(_ song: Song) -> Bool { entries.contains { $0.id == song.id } }
+
+    func toggle(_ song: Song) {
+        if contains(song) {
+            entries.removeAll { $0.id == song.id }
+        } else {
+            entries.insert(Entry(id: song.id, title: song.title, artist: song.artistName, added: Date()), at: 0)
+        }
+        save()
+    }
+
+    /// The library's songs in the list's order; ones that are gone are left out.
+    func songs(in library: [Song]) -> [Song] {
+        let byID = Dictionary(library.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return entries.compactMap { byID[$0.id] }
+    }
+
+    private func save() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(entries) else { return }
+        try? data.write(to: Self.file, options: .atomic)
+    }
+}

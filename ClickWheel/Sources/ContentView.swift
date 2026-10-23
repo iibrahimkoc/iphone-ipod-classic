@@ -125,6 +125,9 @@ struct ScreenView: View {
                             MacRemoteView(remote: model.macRemote)
                         case .flashlight:
                             FlashlightView(flashlight: model.flashlight)
+                        case .songActions(let song, let selection):
+                            SongActionsView(song: song, selection: selection, ratings: player.ratings,
+                                            shared: model.shared, rowHeight: rowHeight)
                         case .photos(let index):
                             PhotoView(photos: model.photos, index: index)
                         }
@@ -378,11 +381,6 @@ struct NowPlayingView: View {
                             .font(.system(size: h * 0.06, weight: .semibold))
                         }
                         .frame(height: h * 0.1)
-                    case .rating:
-                        // SF Symbols at one size, each in the same box, so the marks match and the bar doesn't shift.
-                        picker("Beğeni", options: ["xmark", "minus", "heart.fill"],
-                               selected: [Ratings.Rating.disliked, nil, .liked].firstIndex { $0 == ratings.rating(of: item) }!, h: h,
-                               symbols: true)
                     case .shuffle:
                         picker("Karıştır", options: ["Kapalı", "Şarkılar"], selected: player.shuffle ? 1 : 0, h: h)
                     case .repeatMode:
@@ -402,21 +400,12 @@ struct NowPlayingView: View {
     }
 
     /// "Karıştır  [Kapalı] Şarkılar": the wheel moves the highlight.
-    /// With `symbols`, the options are SF Symbol names.
-    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat, symbols: Bool = false) -> some View {
+    private func picker(_ title: String, options: [String], selected: Int, h: CGFloat) -> some View {
         HStack(spacing: 4) {
             Text(title).font(.system(size: h * 0.065, weight: .bold))
             Spacer()
             ForEach(options.indices, id: \.self) { index in
-                Group {
-                    if symbols {
-                        Image(systemName: options[index])
-                            .font(.system(size: h * 0.045, weight: .bold))
-                            .frame(width: h * 0.08, height: h * 0.065)
-                    } else {
-                        Text(options[index]).font(.system(size: h * 0.06, weight: .semibold))
-                    }
-                }
+                Text(options[index]).font(.system(size: h * 0.06, weight: .semibold))
                     .foregroundColor(index == selected ? .white : .black)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -648,5 +637,68 @@ struct QuarantineOverlay: View {
                 if battery.simulation != nil { battery.cycleSimulation() }
             }
         }
+    }
+}
+
+/// Held center on Now Playing: the song, its rating as three choices side by side (the chosen one
+/// framed, the wheel's place highlighted), and adding it to Paylaşımlık Şarkılar.
+struct SongActionsView: View {
+    let song: Song
+    let selection: Int
+    @ObservedObject var ratings: Ratings
+    @ObservedObject var shared: SharedSongs
+    let rowHeight: CGFloat
+
+    private static let choices = [("xmark", "Beğenme"), ("minus", "Nötr"), ("heart.fill", "Beğen")]
+
+    var body: some View {
+        let rating = IPodModel.ratingOrder.firstIndex { $0 == ratings.rating(of: song) } ?? 1
+        let isShared = shared.contains(song)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(song.title).font(.system(size: rowHeight * 0.5, weight: .bold))
+                Text(song.artistName).font(.system(size: rowHeight * 0.42)).foregroundColor(.gray)
+            }
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .frame(height: rowHeight * 1.8)
+            HStack(spacing: 4) {
+                ForEach(Self.choices.indices, id: \.self) { index in
+                    let here = index == selection
+                    HStack(spacing: 3) {
+                        Image(systemName: Self.choices[index].0)
+                            .font(.system(size: rowHeight * 0.36, weight: .bold))
+                        Text(Self.choices[index].1)
+                            .font(.system(size: rowHeight * 0.4, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundColor(here ? .white : .black)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Group { if here { highlight } })
+                    .overlay(RoundedRectangle(cornerRadius: 3)
+                        .stroke(index == rating ? (here ? Color.white : Color.black) : Color.clear, lineWidth: 1.5)
+                        .padding(1))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(height: rowHeight * 1.2)
+            Rectangle().fill(Color(white: 0.85)).frame(height: 1).padding(.vertical, rowHeight * 0.25)
+            let here = selection == IPodModel.ratingOrder.count
+            HStack {
+                Text(isShared ? "Paylaşımlıklardan Çıkar" : "Paylaşımlık Şarkılara Ekle").lineLimit(1)
+                Spacer(minLength: 4)
+                if isShared {
+                    Image(systemName: "checkmark").font(.system(size: rowHeight * 0.42, weight: .bold))
+                }
+            }
+            .font(.system(size: rowHeight * 0.48, weight: .semibold))
+            .foregroundColor(here ? .white : .black)
+            .padding(.horizontal, 8)
+            .frame(height: rowHeight)
+            .background(Group { if here { highlight } })
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
