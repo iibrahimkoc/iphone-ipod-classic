@@ -1,4 +1,5 @@
 import UIKit
+import notify
 
 /// Watches the battery. At 20 % it shows an iPod-style warning and turns on Low Power Mode.
 /// Below 10 % (not charging) it enters "quarantine": if the battery runs out the phone shuts down
@@ -115,7 +116,7 @@ final class BatteryMonitor: ObservableObject {
             warning = nil
             warnedThreshold = 100
             quarantine = false
-            if level >= 0.80 && simulation == nil { LowPowerMode.set(false) }
+            if level >= 0.80 && simulation == nil && !NightSaver.isHolding { LowPowerMode.set(false) }
             return
         }
 
@@ -151,5 +152,57 @@ enum LowPowerMode {
         let sel = NSSelectorFromString("setPowerMode:error:")
         guard saver.responds(to: sel) else { return }
         _ = unsafeBitCast(saver.method(for: sel), to: Fn.self)(saver, sel, on ? 1 : 0, nil)
+    }
+}
+
+/// Gece Tasarrufu: Low Power Mode from 23:00 to 07:00, so mail, iCloud and the like hold off overnight.
+/// It is checked each minute while the app runs, and when the screen turns off or the app comes back,
+/// since the app is suspended through most of the night. The morning only turns off what the night
+/// turned on, and not while the battery is low.
+final class NightSaver {
+    static let start = 23
+    static let end = 7
+    private static let enabledKey = "nightSaver"
+    private static let holdingKey = "nightSaverHolding"
+
+    /// Low Power Mode is on because of the night, so the battery's own rules leave it alone.
+    static var isHolding: Bool { UserDefaults.standard.bool(forKey: holdingKey) }
+
+    var enabled: Bool {
+        get { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.enabledKey)
+            check()
+        }
+    }
+
+    private let battery: BatteryMonitor
+    private var blankToken: Int32 = 0
+    private var observer: NSObjectProtocol?
+
+    init(battery: BatteryMonitor) {
+        self.battery = battery
+        notify_register_dispatch("com.apple.springboard.hasBlankedScreen", &blankToken, .main) { [weak self] _ in self?.check() }
+        observer = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
+                                                          queue: .main) { [weak self] _ in self?.check() }
+        check()
+    }
+
+    static var isNight: Bool {
+        let hour = Calendar.current.component(.hour, from: Date())
+        return hour >= start || hour < end
+    }
+
+    func check() {
+        let holding = Self.isHolding
+        if enabled && Self.isNight {
+            // Already on, by hand or for the battery: then it isn't the night's to turn off either.
+            guard !holding, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+            LowPowerMode.set(true)
+            UserDefaults.standard.set(true, forKey: Self.holdingKey)
+        } else if holding {
+            UserDefaults.standard.set(false, forKey: Self.holdingKey)
+            if !battery.isLow && !battery.quarantine { LowPowerMode.set(false) }
+        }
     }
 }

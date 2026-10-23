@@ -13,7 +13,6 @@ enum MenuAction {
     case camera
     case macRemote
     case flashlight
-    case screenLight
     /// All photos, or only the favorites.
     case photos(favorites: Bool)
     case live(LiveList)
@@ -83,9 +82,8 @@ enum Screen {
     case game
     case camera
     case macRemote
-    /// Fener's flash, and the screen as a colored light.
+    /// Fener's flash.
     case flashlight
-    case screenLight
     /// Index of the photo on screen, newest first.
     case photos(Int)
 }
@@ -127,6 +125,7 @@ final class IPodModel: ObservableObject {
     let wifi = WiFiController()
     let airplane = AirplaneController()
     let battery = BatteryMonitor()
+    private(set) lazy var nightSaver = NightSaver(battery: battery)
     let library = SongLibrary()
     let chess = ChessGame()
     let camera = CameraController()
@@ -142,10 +141,7 @@ final class IPodModel: ObservableObject {
     private(set) lazy var route = AudioRouteController(player: player)
     private(set) lazy var usage = BatteryUsage(onScreen: { [unowned self] in self.usageActivity() },
                                                playing: { [unowned self] in self.player.isPlaying },
-                                               lit: { [unowned self] in
-                                                   if case .screenLight = self.current { return true }
-                                                   return self.flashlight.isOn
-                                               })
+                                               lit: { [unowned self] in self.flashlight.isOn })
     private var hideHUD: DispatchWorkItem?
     /// Skips a song shortly after it is disliked, unless the wheel moves on from "✕" first.
     private var dislikeSkip: DispatchWorkItem?
@@ -159,6 +155,7 @@ final class IPodModel: ObservableObject {
         startClock()
         _ = remote
         _ = usage
+        _ = nightSaver
         player.onPlayingChange = { [unowned self] in self.usage.checkpoint() }
         NotificationCenter.default.addObserver(forName: RemoteControl.shot, object: nil, queue: nil) { [unowned self] _ in
             DispatchQueue.main.async { self.remoteShot() }
@@ -185,7 +182,10 @@ final class IPodModel: ObservableObject {
         let nextMinute = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
         DispatchQueue.main.asyncAfter(deadline: .now() + nextMinute + 0.05) { [weak self] in
             self?.clock = Self.time()
-            self?.clockTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in self?.clock = Self.time() }
+            self?.clockTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+                self?.clock = Self.time()
+                self?.nightSaver.check()
+            }
         }
     }
 
@@ -235,7 +235,6 @@ final class IPodModel: ObservableObject {
         case .camera: return "Kamera"
         case .macRemote: return "Mac"
         case .flashlight: return "Fener"
-        case .screenLight: return "Renkli Ekran"
         case .photos: return photos.favoritesOnly ? "Favoriler" : "Fotoğraflar"
         }
     }
@@ -347,8 +346,6 @@ final class IPodModel: ObservableObject {
             if macRemote.changeVolume(by: delta) { Feedback.tick() }
         case .flashlight:
             if flashlight.changeTone(by: delta) { Feedback.tick() }
-        case .screenLight:
-            if flashlight.changeColor(by: delta) { Feedback.tick() }
         case .photos(let index):
             let new = min(max(index + delta, 0), max(photos.assets.count - 1, 0))
             guard new != index else { return }
@@ -385,7 +382,6 @@ final class IPodModel: ObservableObject {
             return
         }
         if case .photos = current { return }
-        if case .screenLight = current { return }
         if case .flashlight = current {
             Feedback.tick()
             flashlight.cycleLevel()
@@ -440,9 +436,6 @@ final class IPodModel: ObservableObject {
             stack.append(.macRemote)
         case .flashlight:
             stack.append(.flashlight)
-        case .screenLight:
-            Brightness.set(1)
-            stack.append(.screenLight)
         case .photos(let favorites):
             photos.favoritesOnly = favorites
             photos.load()
@@ -497,8 +490,6 @@ final class IPodModel: ObservableObject {
             camera.stop()
         case .macRemote:
             macRemote.close()
-        case .screenLight:
-            Brightness.set(brightness)
         default:
             break
         }
@@ -597,9 +588,7 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Şimdi Çalıyor", action: .nowPlaying),
             MenuItem(title: "Oyunlar", action: .push("Oyunlar") { [unowned self] in self.gamesMenu() }),
             MenuItem(title: "Kamera", action: .camera),
-            MenuItem(title: "Fener", action: .push("Fener") {
-                [MenuItem(title: "Flaş", action: .flashlight), MenuItem(title: "Renkli Ekran", action: .screenLight)]
-            }),
+            MenuItem(title: "Fener", action: .flashlight),
             MenuItem(title: "Fotoğraflar", action: .push("Fotoğraflar") { [unowned self] in self.photosMenu() }),
             MenuItem(title: "Mac Kumandası", action: .macRemote),
             MenuItem(title: "Ayarlar", action: .live(.settings)),
@@ -649,6 +638,8 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Düşük Güç Modu", action: .run {
                 LowPowerMode.set(!ProcessInfo.processInfo.isLowPowerModeEnabled)
             }, detail: ProcessInfo.processInfo.isLowPowerModeEnabled ? "Açık" : "Kapalı"),
+            MenuItem(title: "Gece Tasarrufu", action: .run { [unowned self] in self.nightSaver.enabled.toggle() },
+                     detail: nightSaver.enabled ? "\(NightSaver.start):00–0\(NightSaver.end):00" : "Kapalı"),
             MenuItem(title: "Kullanım", action: .push("Kullanım") { [unowned self] in self.usageItems() }),
             MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
                      detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"),

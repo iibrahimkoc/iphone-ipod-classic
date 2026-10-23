@@ -50,16 +50,21 @@ It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and
 
 ## Fener
 
-**Fener › Flaş** lights the rear flash. Its two LEDs (white and amber, the 6s's True Tone flash) are driven
+**Fener** lights the rear flash. Its two LEDs (white and amber, the 6s's True Tone flash) are driven
 separately (`Sources/Torch.m`, after [TrollLEDs](https://github.com/PoomSmart/TrollLEDs), MIT): CMCapture's
 `BWFigCaptureDeviceVendor` hands out the camera device and its flashlight stream, which takes `TorchLevel` (0–1)
 and `TorchColor` `{WarmLEDPercentile}`. The app talks to the camera driver itself for this, so it has
 `AppleH6CamInUserClient` and `com.apple.camera.iokit-user-access`. The wheel picks the tone (Beyaz, Doğal, Sıcak,
 Mum, Amber) and the center steps through off, 25, 50 and 100 %; the flash stays on after leaving the screen, and
-goes off for the camera and in quarantine. **Fener › Renkli Ekran** turns the whole phone into a light of the
-color the wheel picks, or a rainbow, at full brightness while it is open.
+goes off for the camera and in quarantine.
 
 ## Battery usage
+
+**Ayarlar › Pil › Gece Tasarrufu** (on by default) turns on Low Power Mode from 23:00 to 07:00, so mail, iCloud
+and other background work hold off overnight (`NightSaver` in `Sources/Battery.swift`). The app is suspended
+through most of the night, so it checks each minute while it runs and whenever the screen turns off or the app
+comes back. In the morning it only turns off what it turned on, and not while the battery is low; while it holds
+Low Power Mode, charging past 80 % doesn't turn it off.
 
 **Ayarlar › Pil › Kullanım** shows where the battery went since the counter started (or was reset with
 **Sıfırla**), as each activity's share, and per activity its time, battery used and battery per hour: the menus,

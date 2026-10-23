@@ -35,16 +35,10 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .background(Group {
-            // Renkli Ekran lights the whole phone, around the screen and the wheel too.
-            if case .screenLight = model.current {
-                ScreenLightBackground(flashlight: model.flashlight)
-            } else {
-                LinearGradient(colors: [Color(white: 0.12), Color(white: 0.03)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .ignoresSafeArea())
+        .background(
+            LinearGradient(colors: [Color(white: 0.12), Color(white: 0.03)],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea())
         .background(VolumeViewHost(view: model.volume.view).frame(width: 1, height: 1).opacity(0.01))
         .overlay(QuarantineOverlay(battery: model.battery))
         .statusBarHidden(true)
@@ -131,8 +125,6 @@ struct ScreenView: View {
                             MacRemoteView(remote: model.macRemote)
                         case .flashlight:
                             FlashlightView(flashlight: model.flashlight)
-                        case .screenLight:
-                            ScreenLightView(flashlight: model.flashlight)
                         case .photos(let index):
                             PhotoView(photos: model.photos, index: index)
                         }
