@@ -104,7 +104,9 @@ enum HUD {
 final class IPodModel: ObservableObject {
     static let visibleRows = 7
 
-    @Published private(set) var stack: [Screen] = []
+    @Published private(set) var stack: [Screen] = [] {
+        didSet { usage.checkpoint() }
+    }
     @Published private(set) var authorized = MPMediaLibrary.authorizationStatus() == .authorized
     @Published private(set) var hud: HUD?
     @Published private(set) var brightness = Double(UIScreen.main.brightness)
@@ -132,6 +134,8 @@ final class IPodModel: ObservableObject {
     /// Albums for Cover Flow, loaded when it opens.
     private(set) var albums: [Album] = []
     private(set) lazy var route = AudioRouteController(player: player)
+    private(set) lazy var usage = BatteryUsage(onScreen: { [unowned self] in self.usageActivity() },
+                                               playing: { [unowned self] in self.player.isPlaying })
     private var hideHUD: DispatchWorkItem?
     /// Skips a song shortly after it is disliked, unless the wheel moves on from "✕" first.
     private var dislikeSkip: DispatchWorkItem?
@@ -144,6 +148,8 @@ final class IPodModel: ObservableObject {
         stack = [.list(mainMenu())]
         startClock()
         _ = remote
+        _ = usage
+        player.onPlayingChange = { [unowned self] in self.usage.checkpoint() }
         NotificationCenter.default.addObserver(forName: RemoteControl.shot, object: nil, queue: nil) { [unowned self] _ in
             DispatchQueue.main.async { self.remoteShot() }
         }
@@ -606,6 +612,7 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Düşük Güç Modu", action: .run {
                 LowPowerMode.set(!ProcessInfo.processInfo.isLowPowerModeEnabled)
             }, detail: ProcessInfo.processInfo.isLowPowerModeEnabled ? "Açık" : "Kapalı"),
+            MenuItem(title: "Kullanım", action: .push("Kullanım") { [unowned self] in self.usageItems() }),
             MenuItem(title: "Pil Testi", action: .run { [unowned self] in self.battery.cycleSimulation() },
                      detail: battery.simulation.map { BatteryMonitor.simulations[$0].name } ?? "Kapalı"),
         ] + headphoneItems()
@@ -620,6 +627,53 @@ final class IPodModel: ObservableObject {
             return [MenuItem(title: name, action: .run {}, detail: "%\(single)")]
         }
         return parts.map { MenuItem(title: "\(name) \($0.0)", action: .run {}, detail: "%\($0.1)") }
+    }
+
+    /// What the screen shows, for the battery usage counter.
+    private func usageActivity() -> BatteryUsage.Activity {
+        switch current {
+        case .nowPlaying, .coverFlow: return .music
+        case .game, .chess: return .games
+        case .camera, .photos: return .camera
+        case .macRemote: return .macRemote
+        default: return .menus
+        }
+    }
+
+    /// Each activity's share of the battery used since the counter started, most first; choosing
+    /// one shows its time, battery and rate per hour.
+    private func usageItems() -> [MenuItem] {
+        usage.checkpoint()
+        let totals = usage.totals.filter { $0.value.seconds >= 60 }.sorted { $0.value.used > $1.value.used }
+        let used = totals.reduce(0) { $0 + max($1.value.used, 0) }
+        let percent = { (fraction: Double) in "%\(Int((max(fraction, 0) * 100).rounded()))" }
+        let nothing = MenuAction.run {}
+        var items = totals.map { activity, total in
+            MenuItem(title: activity.name, action: .push(activity.name) {
+                let hours = total.seconds / 3600
+                return [
+                    MenuItem(title: "Süre", action: nothing, detail: Self.span(total.seconds)),
+                    MenuItem(title: "Harcanan", action: nothing, detail: "\(percent(total.used)) pil"),
+                    MenuItem(title: "Saatte", action: nothing, detail: hours > 0 ? percent(total.used / hours) : "–"),
+                ]
+            }, detail: used > 0 ? percent(max(total.used, 0) / used) : "–")
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM HH:mm"
+        formatter.locale = Locale(identifier: "tr_TR")
+        items.append(MenuItem(title: "Toplam", action: nothing, detail: "\(percent(used)) pil"))
+        items.append(MenuItem(title: "Başlangıç", action: nothing, detail: formatter.string(from: usage.since)))
+        items.append(MenuItem(title: "Sıfırla", action: .run { [unowned self] in
+            self.usage.reset()
+            self.menu()
+        }))
+        return items
+    }
+
+    /// "7 sa 20 dk" / "45 dk", without the estimate's "~".
+    private static func span(_ seconds: TimeInterval) -> String {
+        let minutes = Int(seconds / 60)
+        return minutes >= 60 ? "\(minutes / 60) sa \(minutes % 60) dk" : "\(minutes) dk"
     }
 
     /// "7 sa 20 dk" / "45 dk".

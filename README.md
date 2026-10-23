@@ -48,6 +48,18 @@ The jailbreak is semi-tethered: after a restart the phone boots stock iOS. Plug 
 It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and retrying the known
 "Booting PongoOS…" hang), waits for iOS, and checks that the app, the tweak and SSH are back.
 
+## Battery usage
+
+**Ayarlar › Pil › Kullanım** shows where the battery went since the counter started (or was reset with
+**Sıfırla**), as each activity's share, and per activity its time, battery used and battery per hour: the menus,
+Şimdi Çalıyor, the games, the camera and photos, Mac Kumandası, and the screen off with or without music
+(`Sources/Usage.swift`). Each stretch between two changes (the screen on the iPod, the display turning off or on,
+music starting or stopping, the battery level) is charged to what was going on, from the gauge's mAh
+(AppleSmartBattery in the IORegistry) rather than the 1 % level; time on the charger isn't counted. It is meant
+for a trial period and does nothing between changes. For the whole system, iOS's own log
+(`/var/containers/Shared/SystemGroup/*/Library/BatteryLife/CurrentPowerlog.PLSQL`, readable as mobile) has energy
+per process and component; its timestamps are behind by the offset in `PLStorageOperator_EventForward_TimeOffset`.
+
 ## Games
 
 **Oyunlar › Satranç** plays against Stockfish 19 (GPL-3.0, github.com/official-stockfish/Stockfish). `build.sh`

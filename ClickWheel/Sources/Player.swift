@@ -29,7 +29,10 @@ final class PlayerController: ObservableObject {
     }
 
     @Published private(set) var item: Song?
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false {
+        didSet { if isPlaying != oldValue { onPlayingChange?() } }
+    }
+    var onPlayingChange: (() -> Void)?
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var queueIndex = 0
     @Published private(set) var queueCount = 0
