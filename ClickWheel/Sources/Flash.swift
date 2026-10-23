@@ -38,14 +38,15 @@ final class FlashGame: NSObject, GameSession, WKScriptMessageHandler, UIGestureR
     /// The buttons the page was last told are down.
     private var held: UInt32 = 0
 
-    /// A button's key, as the page's KeyboardEvent key and code.
-    private static let keys: [Int32: (key: String, code: String)] = [
-        RETRO_DEVICE_ID_JOYPAD_UP: ("ArrowUp", "ArrowUp"),
-        RETRO_DEVICE_ID_JOYPAD_DOWN: ("ArrowDown", "ArrowDown"),
-        RETRO_DEVICE_ID_JOYPAD_LEFT: ("ArrowLeft", "ArrowLeft"),
-        RETRO_DEVICE_ID_JOYPAD_RIGHT: ("ArrowRight", "ArrowRight"),
-        RETRO_DEVICE_ID_JOYPAD_A: (" ", "Space"),
-        RETRO_DEVICE_ID_JOYPAD_START: ("Enter", "Enter"),
+    /// A button's keys, as the page's KeyboardEvent key and code. The center is both the space bar
+    /// and the semicolon, the first player's action key in two-player games like Playing With Fire 2.
+    private static let keys: [Int32: [(key: String, code: String)]] = [
+        RETRO_DEVICE_ID_JOYPAD_UP: [("ArrowUp", "ArrowUp")],
+        RETRO_DEVICE_ID_JOYPAD_DOWN: [("ArrowDown", "ArrowDown")],
+        RETRO_DEVICE_ID_JOYPAD_LEFT: [("ArrowLeft", "ArrowLeft")],
+        RETRO_DEVICE_ID_JOYPAD_RIGHT: [("ArrowRight", "ArrowRight")],
+        RETRO_DEVICE_ID_JOYPAD_A: [(" ", "Space"), (";", "Semicolon")],
+        RETRO_DEVICE_ID_JOYPAD_START: [("Enter", "Enter")],
     ]
 
     fileprivate static let page = """
@@ -144,9 +145,9 @@ final class FlashGame: NSObject, GameSession, WKScriptMessageHandler, UIGestureR
         guard changed != 0 else { return }
         held = now
         var script = ""
-        for (id, key) in Self.keys where changed & (1 << UInt32(id)) != 0 {
+        for (id, keys) in Self.keys where changed & (1 << UInt32(id)) != 0 {
             let type = now & (1 << UInt32(id)) != 0 ? "keydown" : "keyup"
-            script += "key('\(type)', '\(key.key)', '\(key.code)');"
+            for key in keys { script += "key('\(type)', '\(key.key)', '\(key.code)');" }
         }
         if !script.isEmpty { web.evaluateJavaScript(script) }
     }

@@ -55,7 +55,7 @@ It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and
 Şimdi Çalıyor, the games, the camera and photos, Mac Kumandası, and the screen off with or without music
 (`Sources/Usage.swift`). Each stretch between two changes (the screen on the iPod, the display turning off or on,
 music starting or stopping, the battery level) is charged to what was going on, from the gauge's mAh
-(AppleSmartBattery in the IORegistry) rather than the 1 % level; time on the charger isn't counted. It is meant
+(the IORegistry's IOPMPowerSource) rather than the 1 % level; time on the charger isn't counted. It is meant
 for a trial period and does nothing between changes. For the whole system, iOS's own log
 (`/var/containers/Shared/SystemGroup/*/Library/BatteryLife/CurrentPowerlog.PLSQL`, readable as mobile) has energy
 per process and component; its timestamps are behind by the offset in `PLStorageOperator_EventForward_TimeOffset`.
@@ -86,6 +86,6 @@ There are no save states: a game's own saves (its Continue) are what carry over.
 [Ruffle](https://github.com/ruffle-rs/ruffle)'s web build, which `build.sh` bundles into the app, in a web view
 (`Sources/Flash.swift`). The page, Ruffle and the game come from an `ipod-flash:` URL scheme the app serves. It uses
 Ruffle's own WebGL renderer (wgpu over WebGL draws nothing in iOS 15's web view) at high quality. The wheel sends
-arrow keys and the center the space bar; Ruffle only takes keys after a focusin, so one is sent before each. The
+arrow keys and the center both the space bar and the semicolon (the first player's bomb in Playing With Fire 2); Ruffle only takes keys after a focusin, so one is sent before each. The
 screen is the mouse, and a long press leaves. Ruffle's messages go to `iPodOyun/Flash/.flash.log`.
 Tested with Domuzcuk (Mr. Don).

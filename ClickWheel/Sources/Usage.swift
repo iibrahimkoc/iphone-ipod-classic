@@ -100,7 +100,7 @@ final class BatteryUsage {
     }
 }
 
-/// The battery's charge from its gauge (AppleSmartBattery in the IORegistry), in mAh, so a few
+/// The battery's charge from its gauge (the IOPMPowerSource in the IORegistry, AppleARMPMUCharger), in mAh, so a few
 /// minutes of use show up instead of waiting for the 1 % level to move. IOKit has no Swift
 /// headers on iOS, so its functions are looked up; the 1 % level is used if they can't be.
 enum BatteryGauge {
@@ -122,7 +122,7 @@ enum BatteryGauge {
         guard let matching: Matching = function("IOServiceMatching"),
               let getService: GetService = function("IOServiceGetMatchingService") else { return 0 }
         // IOServiceGetMatchingService takes over the matching dictionary.
-        return getService(0, matching("AppleSmartBattery"))
+        return getService(0, matching("IOPMPowerSource"))
     }()
 
     private static func integer(_ key: String) -> Int? {
