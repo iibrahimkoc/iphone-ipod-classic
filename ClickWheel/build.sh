@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")"
 
 # libretro cores for Oyunlar, built once for iOS: Genesis Plus GX (Mega Drive), PrBoom (Doom) and
-# FCEUmm (NES).
+# FCEUmm (NES), plus J2ME (Java phone games) below.
 # They are bundled in the app's cores folder and opened with dlopen; both export the same retro_*
 # functions, so they can't be linked in. The Genesis checkout also provides libretro.h.
 IOSSDK="$(xcrun -sdk iphoneos --show-sdk-path)"
@@ -24,6 +24,12 @@ if [ ! -f "$FCEUMM" ]; then
     [ -d build/fceumm ] || git clone -q --depth 1 https://github.com/libretro/libretro-fceumm.git build/fceumm
     make -C build/fceumm -f Makefile.libretro -j"$(sysctl -n hw.ncpu)" platform=ios-arm64 IOSSDK="$IOSSDK" >/dev/null
 fi
+# The J2ME core for Java phone games is this repository's own (J2ME/), rebuilt every time.
+J2ME=build/j2me/j2me_libretro_ios.dylib
+mkdir -p build/j2me
+xcrun -sdk iphoneos clang -target arm64-apple-ios15.0 -O2 -dynamiclib -I build/genesis/libretro/libretro-common/include \
+    J2ME/vm.c J2ME/lib.c J2ME/midp.c J2ME/midi.c J2ME/jar.c J2ME/libretro.c \
+    -lz -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO -o "$J2ME"
 
 xcodegen generate --quiet
 xcodebuild -project ClickWheel.xcodeproj -scheme ClickWheel -sdk iphoneos \
@@ -47,7 +53,7 @@ strip "$APP/stockfish"
 ldid -S"$PWD/stockfish.entitlements" "$APP/stockfish"
 
 mkdir -p "$APP/cores"
-for CORE in "$GPGX" "$PRBOOM" "$FCEUMM"; do
+for CORE in "$GPGX" "$PRBOOM" "$FCEUMM" "$J2ME"; do
     cp "$CORE" "$APP/cores/"
     ldid -S "$APP/cores/$(basename "$CORE")"
 done
@@ -59,7 +65,7 @@ cp -R "$APP" "$PKG/var/jb/Applications/"
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: com.ibrahimkoc.clickwheel
 Name: iPod
-Version: 2.16.4
+Version: 2.17.0
 Architecture: iphoneos-arm64
 Description: iPod Classic style click-wheel music player
 Maintainer: ibrahimkoc

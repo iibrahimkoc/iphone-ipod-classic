@@ -60,3 +60,12 @@ github.com/libretro/Genesis-Plus-GX) for Mega Drive / Master System / Game Gear 
 `/var/mobile/Media/iPodOyun/Doom` (the Doom shareware episode, Freedoom Phase 1 and 2, plus PrBoom's own
 `prboom.wad`). While a game runs the wheel is the D-pad and the center the main button; a tap on the screen's left
 or right half presses that side's button, and a long press leaves, saving the game's place.
+
+**Oyunlar › Java** runs MIDP phone games (`.jar`, in `/var/mobile/Media/iPodOyun/Java`) on the repository's own
+libretro core in `ClickWheel/J2ME`: a small Java bytecode interpreter with green threads and a mark-and-sweep
+collector, plus the CLDC/MIDP classes these games call (lcdui on CoreGraphics/CoreText, RecordStore saves in a
+hidden folder next to the game, Samsung's AudioClip and MMAPI MIDI through a tiny synthesizer). It is written for
+and tested with Forgotten Warrior (240×320). The wheel is the phone's D-pad (up-left/up-right are the 1 and 3 keys),
+the center is fire, the screen's halves are the soft keys, and that game's potions and MP bar can be tapped.
+`J2ME/test.c` runs a game on the Mac with scripted buttons and writes screenshots, for working on the core.
+There are no save states: a game's own saves (its Continue) are what carry over.

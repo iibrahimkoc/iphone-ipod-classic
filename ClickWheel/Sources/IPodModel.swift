@@ -714,6 +714,7 @@ final class IPodModel: ObservableObject {
         [
             MenuItem(title: "Satranç", action: .push("Satranç") { [unowned self] in self.chessMenu() }),
             MenuItem(title: "Doom", action: .push("Doom") { [unowned self] in self.consoleMenu(.doom) }),
+            MenuItem(title: "Java", action: .push("Java") { [unowned self] in self.consoleMenu(.java) }),
             MenuItem(title: "Mega Drive", action: .push("Mega Drive") { [unowned self] in self.consoleMenu(.megaDrive) }),
             MenuItem(title: "NES", action: .push("NES") { [unowned self] in self.consoleMenu(.nes) }),
         ]
@@ -744,15 +745,18 @@ final class IPodModel: ObservableObject {
 
     private func openGame(_ game: URL, on console: Console) {
         guard let emulator = Emulator(console: console, game: game) else { return }
+        emulator.onExit = { [unowned self] in
+            if case .game = self.current, self.emulator === emulator { self.menu() }
+        }
         player.pause()
         self.emulator = emulator
         stack.append(.game)
     }
 
-    /// A tap on the game's screen presses that half's button for a few frames, so the game sees it.
-    func tapScreen(left: Bool) {
+    /// A tap on the game's screen presses its button for a few frames, so the game sees it.
+    func tapScreen(_ id: Int32) {
         guard let emulator = emulator else { return }
-        let button: UInt32 = 1 << UInt32(left ? emulator.console.leftTap : emulator.console.rightTap)
+        let button: UInt32 = 1 << UInt32(id)
         emulator.tapped |= button
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { emulator.tapped &= ~button }
     }

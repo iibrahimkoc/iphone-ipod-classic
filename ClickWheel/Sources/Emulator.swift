@@ -31,18 +31,38 @@ struct Console {
         center: RETRO_DEVICE_ID_JOYPAD_X, leftTap: RETRO_DEVICE_ID_JOYPAD_A, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
         help: "Tekerlek: yürü, dön · Orta: ateş\nSol: kapı aç · Sağ: menü · Uzun bas: çık")
 
+    /// MIDP phone games (.jar), run by the J2ME core in J2ME/. The wheel is the phone's D-pad
+    /// (up-left and up-right are the 1 and 3 keys, a jump to that side), the center is its fire
+    /// key and the screen's halves are the two soft keys under the display.
+    static let java = Console(
+        name: "Java", core: "j2me_libretro_ios.dylib", folder: root.appendingPathComponent("Java"),
+        extensions: ["jar"], namedByFile: true,
+        center: RETRO_DEVICE_ID_JOYPAD_A, leftTap: RETRO_DEVICE_ID_JOYPAD_L, rightTap: RETRO_DEVICE_ID_JOYPAD_R,
+        // The status bar: the red potion is the 7 key, the blue one 9, and the MP bar 0 (magic).
+        zones: ["Forgotten Warrior": [
+            TapZone(rect: CGRect(x: 0, y: 255, width: 30, height: 37), size: CGSize(width: 240, height: 320), button: RETRO_DEVICE_ID_JOYPAD_X),
+            TapZone(rect: CGRect(x: 30, y: 255, width: 34, height: 37), size: CGSize(width: 240, height: 320), button: RETRO_DEVICE_ID_JOYPAD_Y),
+            TapZone(rect: CGRect(x: 150, y: 255, width: 90, height: 37), size: CGSize(width: 240, height: 320), button: RETRO_DEVICE_ID_JOYPAD_B),
+        ]],
+        help: "Tekerlek: yürü · Yukarı: zıpla · Orta: vur\nSol/sağ dokun: alt köşedeki tuşlar\nİksire dokun: iç · MP'ye dokun: büyü · Uzun bas: çık")
+
     let name: String
     let core: String
     let folder: URL
     let extensions: Set<String>
     /// Menu names for known files.
     var titles: [String: String] = [:]
+    /// Phone game files carry their version and language after the name
+    /// ("Forgotten-Warrior_J2ME_EN_v291"), so only the part before the first "_" is shown.
+    var namedByFile = false
     /// What the wheel's center and a tap on the left or right half of the screen press.
     let center: Int32
     let leftTap: Int32
     let rightTap: Int32
     /// Held as well while a finger is on the outer part of the ring (NES: B, to run).
     var outerRing: Int32? = nil
+    /// Parts of a game's picture that press a button when tapped, by game title.
+    var zones: [String: [TapZone]] = [:]
     let help: String
 
     /// The games in the folder, by name. prboom.wad is the engine's own data, not a game.
@@ -54,7 +74,10 @@ struct Console {
     }
 
     func title(_ game: URL) -> String {
-        titles[game.lastPathComponent.lowercased()] ?? game.deletingPathExtension().lastPathComponent
+        if let title = titles[game.lastPathComponent.lowercased()] { return title }
+        let name = game.deletingPathExtension().lastPathComponent
+        guard namedByFile, let first = name.split(separator: "_").first else { return name }
+        return first.replacingOccurrences(of: "-", with: " ")
     }
 
     func hasSave(_ game: URL) -> Bool {
@@ -71,6 +94,18 @@ struct Console {
 
     func sramFile(_ game: URL) -> URL {
         folder.appendingPathComponent("." + game.deletingPathExtension().lastPathComponent + ".srm")
+    }
+}
+
+/// A tappable part of a game's picture, kept as a fraction of the picture so it follows its size.
+struct TapZone {
+    let unit: CGRect
+    let button: Int32
+
+    init(rect: CGRect, size: CGSize, button: Int32) {
+        unit = CGRect(x: rect.minX / size.width, y: rect.minY / size.height,
+                      width: rect.width / size.width, height: rect.height / size.height)
+        self.button = button
     }
 }
 
@@ -157,6 +192,10 @@ final class Emulator: NSObject {
     let view = UIView()
     let console: Console
     let title: String
+    /// The picture's width over its height.
+    private(set) var aspect: CGFloat = 4.0 / 3.0
+    /// The game asked to quit (a phone game's Exit); called on the main queue.
+    var onExit: (() -> Void)?
     private let game: URL
     private let core: Core
     private var pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555.rawValue
@@ -206,6 +245,10 @@ final class Emulator: NSObject {
         }
         var av = retro_system_av_info()
         core.avInfo(&av)
+        if av.geometry.base_height > 0 {
+            aspect = av.geometry.aspect_ratio > 0 ? CGFloat(av.geometry.aspect_ratio)
+                : CGFloat(av.geometry.base_width) / CGFloat(av.geometry.base_height)
+        }
         loadSaves()
 
         view.backgroundColor = .black
@@ -283,6 +326,11 @@ final class Emulator: NSObject {
             return true
         case RETRO_ENVIRONMENT_GET_CAN_DUPE:
             data?.assumingMemoryBound(to: Bool.self).pointee = true
+            return true
+        case RETRO_ENVIRONMENT_SHUTDOWN:
+            // Asked from inside retro_run, so the core is shut down after it returns.
+            let game = current
+            DispatchQueue.main.async { if let game = game, game === current { game.onExit?() } }
             return true
         default:
             return false
@@ -459,10 +507,11 @@ final class GamepadView: UIView {
 }
 
 /// The game's picture, with the controls shown for a few seconds when it opens. A tap on the
-/// left or right half presses that side's button; a long press anywhere leaves.
+/// left or right half presses that side's button, a tap on one of the game's zones its button;
+/// a long press anywhere leaves.
 struct GameScreen: View {
     let game: Emulator
-    let onTap: (_ left: Bool) -> Void
+    let onTap: (_ button: Int32) -> Void
     let onLeave: () -> Void
     @State private var showsHelp = true
 
@@ -471,6 +520,17 @@ struct GameScreen: View {
             .overlay(HStack(spacing: 0) {
                 half(left: true)
                 half(left: false)
+            })
+            .overlay(GeometryReader { geo in
+                let picture = pictureRect(in: geo.size)
+                ForEach(Array((game.console.zones[game.title] ?? []).enumerated()), id: \.offset) { _, zone in
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(width: zone.unit.width * picture.width, height: zone.unit.height * picture.height)
+                        .position(x: picture.minX + zone.unit.midX * picture.width, y: picture.minY + zone.unit.midY * picture.height)
+                        .onTapGesture { onTap(zone.button) }
+                        .onLongPressGesture(minimumDuration: 0.8, perform: onLeave)
+                }
             })
             .overlay(Group {
                 if showsHelp {
@@ -492,8 +552,15 @@ struct GameScreen: View {
     private func half(left: Bool) -> some View {
         Color.clear
             .contentShape(Rectangle())
-            .onTapGesture { onTap(left) }
+            .onTapGesture { onTap(left ? game.console.leftTap : game.console.rightTap) }
             .onLongPressGesture(minimumDuration: 0.8, perform: onLeave)
+    }
+
+    /// Where the picture is, fitted into `size` as the layer's resizeAspect does.
+    private func pictureRect(in size: CGSize) -> CGRect {
+        let width = min(size.width, size.height * game.aspect)
+        let height = width / game.aspect
+        return CGRect(x: (size.width - width) / 2, y: (size.height - height) / 2, width: width, height: height)
     }
 }
 

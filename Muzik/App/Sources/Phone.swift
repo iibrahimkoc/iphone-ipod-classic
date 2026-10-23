@@ -266,6 +266,7 @@ final class Phone: NSObject, ObservableObject, NetServiceBrowserDelegate, NetSer
         for ext in ["nes", "fds", "unf", "unif"] { folders[ext] = "NES" }
         for ext in ["md", "gen", "bin", "smd", "68k", "sgd", "sms", "gg"] { folders[ext] = "MegaDrive" }
         folders["wad"] = "Doom"
+        folders["jar"] = "Java"
         return folders
     }()
 
