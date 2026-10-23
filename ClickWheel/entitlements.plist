@@ -37,7 +37,10 @@
 		<string>AGXSharedUserClient</string>
 		<string>IOGPUDeviceUserClient</string>
 		<string>AppleJPEGDriverUserClient</string>
+		<string>AppleH6CamInUserClient</string>
 	</array>
+	<key>com.apple.camera.iokit-user-access</key>
+	<true/>
 	<key>com.apple.private.tcc.allow</key>
 	<array>
 		<string>kTCCServiceBluetoothAlways</string>

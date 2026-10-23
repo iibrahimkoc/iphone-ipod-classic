@@ -7,7 +7,7 @@ import notify
 /// Kept across launches until "Sıfırla"; it only does work when something changes.
 final class BatteryUsage {
     enum Activity: String, CaseIterable {
-        case menus, music, games, camera, macRemote, screenOffMusic, screenOff
+        case menus, music, games, camera, macRemote, flashlight, screenOffMusic, screenOff
 
         var name: String {
             switch self {
@@ -16,6 +16,7 @@ final class BatteryUsage {
             case .games: return "Oyunlar"
             case .camera: return "Kamera ve Fotoğraflar"
             case .macRemote: return "Mac Kumandası"
+            case .flashlight: return "Fener"
             case .screenOffMusic: return "Ekran Kapalı, Müzik"
             case .screenOff: return "Ekran Kapalı"
             }
@@ -32,17 +33,19 @@ final class BatteryUsage {
     private(set) var since = Date()
     private(set) var screenOff = false
 
-    /// What the screen shows while it is on, and whether music is playing.
+    /// What the screen shows while it is on, whether music is playing, and whether Fener is lit.
     private let onScreen: () -> Activity
     private let playing: () -> Bool
+    private let lit: () -> Bool
     private var last: (date: Date, charge: Double?, activity: Activity, charging: Bool)?
     private var blankToken: Int32 = 0
     private var observers: [NSObjectProtocol] = []
     private static let key = "batteryUsage"
 
-    init(onScreen: @escaping () -> Activity, playing: @escaping () -> Bool) {
+    init(onScreen: @escaping () -> Activity, playing: @escaping () -> Bool, lit: @escaping () -> Bool) {
         self.onScreen = onScreen
         self.playing = playing
+        self.lit = lit
         load()
         notify_register_dispatch("com.apple.springboard.hasBlankedScreen", &blankToken, .main) { [weak self] token in
             var blanked: UInt64 = 0
@@ -59,7 +62,7 @@ final class BatteryUsage {
     }
 
     var activity: Activity {
-        screenOff ? (playing() ? .screenOffMusic : .screenOff) : onScreen()
+        lit() ? .flashlight : screenOff ? (playing() ? .screenOffMusic : .screenOff) : onScreen()
     }
 
     /// Charges the time and battery since the last checkpoint to what was going on then.

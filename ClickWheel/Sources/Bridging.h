@@ -3,3 +3,6 @@
 
 // RetroLog.c: fills in the log callback (variadic, so it is written in C).
 void retro_frontend_log_interface(struct retro_log_callback *callback);
+
+// Torch.m: the flash's white and amber LEDs, for Fener.
+#import "Torch.h"

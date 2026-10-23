@@ -48,6 +48,17 @@ The jailbreak is semi-tethered: after a restart the phone boots stock iOS. Plug 
 It guides DFU entry with a countdown, runs `palera1n -l` (killing stale runs and retrying the known
 "Booting PongoOS…" hang), waits for iOS, and checks that the app, the tweak and SSH are back.
 
+## Fener
+
+**Fener › Flaş** lights the rear flash. Its two LEDs (white and amber, the 6s's True Tone flash) are driven
+separately (`Sources/Torch.m`, after [TrollLEDs](https://github.com/PoomSmart/TrollLEDs), MIT): CMCapture's
+`BWFigCaptureDeviceVendor` hands out the camera device and its flashlight stream, which takes `TorchLevel` (0–100)
+and `TorchColor` `{WarmLEDPercentile}`. The app talks to the camera driver itself for this, so it has
+`AppleH6CamInUserClient` and `com.apple.camera.iokit-user-access`. The wheel picks the tone (Beyaz, Doğal, Sıcak,
+Mum, Amber) and the center steps through off, 25, 50 and 100 %; the flash stays on after leaving the screen, and
+goes off for the camera and in quarantine. **Fener › Renkli Ekran** turns the whole phone into a light of the
+color the wheel picks, or a rainbow, at full brightness while it is open.
+
 ## Battery usage
 
 **Ayarlar › Pil › Kullanım** shows where the battery went since the counter started (or was reset with

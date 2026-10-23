@@ -12,6 +12,8 @@ enum MenuAction {
     case coverFlow
     case camera
     case macRemote
+    case flashlight
+    case screenLight
     /// All photos, or only the favorites.
     case photos(favorites: Bool)
     case live(LiveList)
@@ -81,6 +83,9 @@ enum Screen {
     case game
     case camera
     case macRemote
+    /// Fener's flash, and the screen as a colored light.
+    case flashlight
+    case screenLight
     /// Index of the photo on screen, newest first.
     case photos(Int)
 }
@@ -127,6 +132,7 @@ final class IPodModel: ObservableObject {
     let camera = CameraController()
     let photos = PhotoLibrary()
     let macRemote = MacRemote()
+    let flashlight = Flashlight()
     /// The emulated game on screen.
     private(set) var emulator: GameSession?
     private(set) lazy var remote = RemoteControl(player: player, volume: volume)
@@ -135,7 +141,11 @@ final class IPodModel: ObservableObject {
     private(set) var albums: [Album] = []
     private(set) lazy var route = AudioRouteController(player: player)
     private(set) lazy var usage = BatteryUsage(onScreen: { [unowned self] in self.usageActivity() },
-                                               playing: { [unowned self] in self.player.isPlaying })
+                                               playing: { [unowned self] in self.player.isPlaying },
+                                               lit: { [unowned self] in
+                                                   if case .screenLight = self.current { return true }
+                                                   return self.flashlight.isOn
+                                               })
     private var hideHUD: DispatchWorkItem?
     /// Skips a song shortly after it is disliked, unless the wheel moves on from "✕" first.
     private var dislikeSkip: DispatchWorkItem?
@@ -184,6 +194,7 @@ final class IPodModel: ObservableObject {
     private func enterQuarantine() {
         preQuarantine = (airplane.enabled, UIScreen.main.brightness)
         player.pause()
+        flashlight.off()
         airplane.setEnabled(true)
         Brightness.set(0.05)
         scheduleLock()
@@ -223,6 +234,8 @@ final class IPodModel: ObservableObject {
         case .game: return emulator?.title ?? "Oyun"
         case .camera: return "Kamera"
         case .macRemote: return "Mac"
+        case .flashlight: return "Fener"
+        case .screenLight: return "Renkli Ekran"
         case .photos: return photos.favoritesOnly ? "Favoriler" : "Fotoğraflar"
         }
     }
@@ -332,6 +345,10 @@ final class IPodModel: ObservableObject {
             if camera.zoom(by: delta) { Feedback.tick() }
         case .macRemote:
             if macRemote.changeVolume(by: delta) { Feedback.tick() }
+        case .flashlight:
+            if flashlight.changeTone(by: delta) { Feedback.tick() }
+        case .screenLight:
+            if flashlight.changeColor(by: delta) { Feedback.tick() }
         case .photos(let index):
             let new = min(max(index + delta, 0), max(photos.assets.count - 1, 0))
             guard new != index else { return }
@@ -368,6 +385,13 @@ final class IPodModel: ObservableObject {
             return
         }
         if case .photos = current { return }
+        if case .screenLight = current { return }
+        if case .flashlight = current {
+            Feedback.tick()
+            flashlight.cycleLevel()
+            usage.checkpoint()
+            return
+        }
         if case .macRemote = current {
             Feedback.tick()
             macRemote.send("toggle")
@@ -407,11 +431,18 @@ final class IPodModel: ObservableObject {
             albums = library.albums(of: library.songs)
             stack.append(.coverFlow(0))
         case .camera:
+            // The camera needs the flash's device.
+            flashlight.off()
             camera.start()
             stack.append(.camera)
         case .macRemote:
             macRemote.open()
             stack.append(.macRemote)
+        case .flashlight:
+            stack.append(.flashlight)
+        case .screenLight:
+            Brightness.set(1)
+            stack.append(.screenLight)
         case .photos(let favorites):
             photos.favoritesOnly = favorites
             photos.load()
@@ -466,6 +497,8 @@ final class IPodModel: ObservableObject {
             camera.stop()
         case .macRemote:
             macRemote.close()
+        case .screenLight:
+            Brightness.set(brightness)
         default:
             break
         }
@@ -490,6 +523,7 @@ final class IPodModel: ObservableObject {
             camera.capture()
             return
         }
+        flashlight.off()
         camera.start()
         stack.append(.camera)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.camera.capture() }
@@ -563,6 +597,9 @@ final class IPodModel: ObservableObject {
             MenuItem(title: "Şimdi Çalıyor", action: .nowPlaying),
             MenuItem(title: "Oyunlar", action: .push("Oyunlar") { [unowned self] in self.gamesMenu() }),
             MenuItem(title: "Kamera", action: .camera),
+            MenuItem(title: "Fener", action: .push("Fener") {
+                [MenuItem(title: "Flaş", action: .flashlight), MenuItem(title: "Renkli Ekran", action: .screenLight)]
+            }),
             MenuItem(title: "Fotoğraflar", action: .push("Fotoğraflar") { [unowned self] in self.photosMenu() }),
             MenuItem(title: "Mac Kumandası", action: .macRemote),
             MenuItem(title: "Ayarlar", action: .live(.settings)),
