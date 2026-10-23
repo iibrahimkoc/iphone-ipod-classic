@@ -65,7 +65,7 @@ final class Flashlight: ObservableObject {
             torch.stop()
             failed = false
         } else {
-            failed = !torch.setLevel(Int32(Self.levels[level]), warm: Int32(Self.tones[tone].warm))
+            failed = !torch.setLevel(Float(Self.levels[level]) / 100, warm: Int32(Self.tones[tone].warm))
             if failed { level = 0 }
         }
     }

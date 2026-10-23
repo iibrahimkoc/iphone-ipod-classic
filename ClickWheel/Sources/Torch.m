@@ -4,8 +4,8 @@
 
 // How the LEDs are driven comes from TrollLEDs (github.com/PoomSmart/TrollLEDs, MIT): CMCapture's
 // device vendor hands out the camera device and its flashlight stream, and on dual-LED phones the
-// stream takes TorchLevel (0–100) and TorchColor {WarmLEDPercentile}. On iOS 15 only the vendor's
-// instance methods are there.
+// stream takes TorchLevel (0–1; anything from 1 up is full) and TorchColor {WarmLEDPercentile}.
+// On iOS 15 only the vendor's instance methods are there.
 
 @interface BWFigCaptureStream : NSObject
 - (int)setProperty:(CFStringRef)property value:(id)value;
@@ -55,10 +55,10 @@
     return _stream != nil;
 }
 
-- (BOOL)setLevel:(int)level warm:(int)warm {
+- (BOOL)setLevel:(float)level warm:(int)warm {
     if (![self open]) return NO;
     [_stream setProperty:CFSTR("TorchColor") value:@{@"WarmLEDPercentile": @(MIN(MAX(warm, 0), 100))}];
-    return [_stream setProperty:CFSTR("TorchLevel") value:@(MIN(MAX(level, 0), 100))] == 0;
+    return [_stream setProperty:CFSTR("TorchLevel") value:@(MIN(MAX(level, 0), 1))] == 0;
 }
 
 - (void)stop {
