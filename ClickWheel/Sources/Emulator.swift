@@ -11,6 +11,8 @@ struct Console {
         name: "Mega Drive", core: "genesis_plus_gx_libretro_ios.dylib", folder: root.appendingPathComponent("MegaDrive"),
         extensions: ["md", "gen", "bin", "smd", "68k", "sgd", "sms", "gg"],
         center: RETRO_DEVICE_ID_JOYPAD_B, leftTap: RETRO_DEVICE_ID_JOYPAD_START, rightTap: RETRO_DEVICE_ID_JOYPAD_START,
+        // Mega Bomberman lays bombs with C.
+        centers: ["Mega Bomberman": RETRO_DEVICE_ID_JOYPAD_A],
         help: "Tekerlek: yön · Orta: zıpla\nEkrana dokun: Start · Uzun bas: çık")
 
     /// The NES pad: the center is A (jump); pressing near the ring's outer edge also holds B, so
@@ -74,6 +76,8 @@ struct Console {
     var outerRing: Int32? = nil
     /// Parts of a game's picture that press a button when tapped, by game title.
     var zones: [String: [TapZone]] = [:]
+    /// The center's button for games that want another than `center`, by game title.
+    var centers: [String: Int32] = [:]
     let help: String
 
     /// The games in the folder, by name. prboom.wad is the engine's own data, not a game.
@@ -82,6 +86,10 @@ struct Console {
         let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         return urls.filter { extensions.contains($0.pathExtension.lowercased()) && $0.lastPathComponent.lowercased() != "prboom.wad" }
             .sorted { title($0).localizedStandardCompare(title($1)) == .orderedAscending }
+    }
+
+    func center(for title: String) -> Int32 {
+        centers[title] ?? center
     }
 
     func title(_ game: URL) -> String {
